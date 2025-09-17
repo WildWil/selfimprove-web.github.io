@@ -10,25 +10,25 @@ You can export a **save key** (JSON file) and re-import it later to carry your p
 
 ## 🗂️ Project Structure
 .
-├── index.html          # Main entry (router + app root)
-├── .nojekyll           # Disable Jekyll on GitHub Pages
-├── css/
-│   └── app.css         # Base styles, variables, components
-├── js/
-│   ├── app.js          # App bootstrap + router
-│   ├── ui.js           # Render helpers + views
-│   ├── export.js       # Save key export
-│   ├── import.js       # Save key import
-│   ├── streaks.js      # Streak logic
-│   ├── calendar.js     # Calendar helpers
-│   ├── metrics.js      # Local analytics
-│   ├── onboarding.js   # First-run setup
-│   ├── validators.js   # Schema checks
-│   └── quotes.js       # Daily quotes loader
-├── data/
-│   └── quotes.json     # Motivational quotes
-└── assets/
-    └── icons.svg       # SVG sprite for UI icons
+|-- index.html          # Main entry (router + app root)
+|-- .nojekyll           # Disable Jekyll on GitHub Pages
+|-- css/
+|   `-- app.css         # Base styles, variables, components
+|-- js/
+|   |-- app.js          # App bootstrap + router
+|   |-- ui.js           # Render helpers + views
+|   |-- export.js       # Save key export
+|   |-- import.js       # Save key import
+|   |-- streaks.js      # Streak logic
+|   |-- calendar.js     # Calendar helpers
+|   |-- metrics.js      # Local analytics
+|   |-- onboarding.js   # First-run setup
+|   |-- validators.js   # Schema checks
+|   `-- quotes.js       # Daily quotes loader
+|-- data/
+|   `-- quotes.json     # Motivational quotes
+`-- assets/
+    `-- icons.svg       # SVG sprite for UI icons
 
 
 ## 🔑 Save & Load
