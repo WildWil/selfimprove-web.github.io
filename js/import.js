@@ -1,9 +1,7 @@
-// import.js
-// v0.1 — read & validate a save key; apply Replace-All import
-
+// import.js — v0.2 file or key -> validated snapshot -> replace-all
 import { validateSnapshot } from "./validators.js";
 
-/** Read a File -> JSON object. */
+/** File -> JSON object (validated) */
 export async function readSnapshotFile(file) {
   const text = await file.text();
   const obj = JSON.parse(text);
@@ -12,10 +10,16 @@ export async function readSnapshotFile(file) {
   return obj;
 }
 
-/**
- * Apply a snapshot to storage using Replace-All mode.
- * saveFns: { setUser, setHabits, setDays, setMeta, setVersion }
- */
+/** Save Key string -> JSON object (validated) */
+export function readSnapshotFromKey(keyStr) {
+  const json = decodeURIComponent(escape(atob(keyStr.trim())));
+  const obj = JSON.parse(json);
+  const err = validateSnapshot(obj);
+  if (err) throw new Error(err);
+  return obj;
+}
+
+/** Replace-all import into state via provided setters */
 export function applySnapshotReplaceAll(snapshot, saveFns) {
   saveFns.setUser(snapshot.user);
   saveFns.setHabits(snapshot.habits);
