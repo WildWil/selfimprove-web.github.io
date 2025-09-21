@@ -11,18 +11,22 @@ function h(tag, attrs = {}, ...children) {
   for (const [k, v] of Object.entries(attrs || {})) {
     if (k === "class") el.className = v;
     else if (k === "text") el.textContent = v;
-    else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2).toLowerCase(), v);
-    else if (v !== false && v != null) el.setAttribute(k, String(v));
+    else if (k === "value") {                 // <-- new special case
+      if ("value" in el) el.value = v;        // set property if it exists
+      else el.setAttribute("value", String(v));
+    }
+    else if (k.startsWith("on") && typeof v === "function") {
+      el.addEventListener(k.slice(2).toLowerCase(), v);
+    }
+    else if (v !== false && v != null) {
+      el.setAttribute(k, String(v));
+    }
   }
   for (const c of children.flat()) {
     if (c == null) continue;
     el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
   }
   return el;
-}
-
-function card(title, ...body) {
-  return h("section", { class: "card" }, h("h2", { text: title }), ...body);
 }
 
 /* ------------------------------ TODAY ----------------------------------- */
