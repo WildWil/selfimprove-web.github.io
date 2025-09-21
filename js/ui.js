@@ -108,17 +108,7 @@ loadQuotes().then(quotes => {
 export function renderHistory(state){
   const wrap = h("div", { class: "wrap" });
 
-  // helpers
-  const ymd = (d) => d.toISOString().slice(0,10);
-  const firstOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
-  const startOfCalendar = (date) => { const f = firstOfMonth(date); const s = new Date(f); s.setDate(f.getDate() - f.getDay()); return s; };
-  const endOfCalendar = (date) => { const f = firstOfMonth(date); const e = new Date(f.getFullYear(), f.getMonth()+1, 0); const pad = 6 - e.getDay(); const r = new Date(e); r.setDate(e.getDate()+pad); return r; };
-  const pctFor = (iso) => {
-    const total = state.habits.length;
-    const day = state.days[iso] || { habits:{} };
-    const done = Object.values(day.habits || {}).filter(Boolean).length;
-    return total ? Math.round((done/total)*100) : 0;
-  };
+ import { ymd, startOfCalendar, endOfCalendar } from './calendar.js';
 
   let monthOffset = 0;
 
