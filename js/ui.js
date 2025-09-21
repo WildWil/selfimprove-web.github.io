@@ -1,14 +1,13 @@
-// ui.js — v0.6 (Today, History Calendar, Habits, Journal, Settings)
+// ui.js — v0.7 clean (Today, History Calendar, Habits, Journal, Settings)
 
 import { currentStreak, todayISO } from "./streaks.js";
-import { loadQuotes } from './data.js';
+import { ymd, startOfCalendar, endOfCalendar } from "./calendar.js";
+import { loadQuotes } from "./data.js";
 
 let CTRL = null;
 export function attachController(c){ CTRL = c; }
 
 /* --------------------------- DOM helper --------------------------------- */
-// Safer element helper: prefers DOM properties (e.g., checked), supports
-// onClick/onclick/oninput…, and falls back to attributes only when needed.
 function h(tag, attrs = {}, ...children){
   const el = document.createElement(tag);
 
@@ -26,7 +25,7 @@ function h(tag, attrs = {}, ...children){
         el.addEventListener(k.slice(2).toLowerCase(), v);
       }
       else if (k in el) {
-        el[k] = v; // set as DOM property (e.g., checked, disabled)
+        el[k] = v;              // prefer DOM property (e.g., checked, disabled)
       }
       else {
         el.setAttribute(k, String(v));
@@ -67,13 +66,16 @@ export function renderToday(state) {
     )
   );
 
-  // Quote of the day (keeps same quote per day)
-  const quoteEl = h("blockquote", { class: "quote" }, ""); // placeholder
-loadQuotes().then(quotes => {
-  if (!quotes.length) return;
-  const idx = Math.floor((Date.now() / 86400000) % quotes.length);
-  quoteEl.textContent = quotes[idx]?.text ?? "";
-});
+  // Quote of the day (same quote per day)
+  const quoteEl = h("blockquote", { class: "quote" }, "");
+  loadQuotes()
+    .then(quotes => {
+      if (!quotes || !quotes.length) return;
+      const idx = Math.floor((Date.now() / 86400000) % quotes.length);
+      const q = quotes[idx];
+      quoteEl.textContent = typeof q === "string" ? q : (q?.text ?? "");
+    })
+    .catch(()=>{ /* silent */ });
 
   const list = h("div");
   if (total === 0) {
@@ -86,11 +88,11 @@ loadQuotes().then(quotes => {
       const row = h("label", { class: "row", style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;" },
         h("input", {
           type: "checkbox",
-          checked: checked,
+          checked,
           onchange: (e) => {
             CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
             // re-render today quickly
-            const ev = new Event("hashchange"); window.dispatchEvent(ev);
+            window.dispatchEvent(new Event("hashchange"));
           }
         }),
         h("span", { class: "mono", style: "flex:1;" }, habit.name),
@@ -108,7 +110,12 @@ loadQuotes().then(quotes => {
 export function renderHistory(state){
   const wrap = h("div", { class: "wrap" });
 
- import { ymd, startOfCalendar, endOfCalendar } from './calendar.js';
+  const pctFor = (iso) => {
+    const total = state.habits.length;
+    const d = state.days[iso] || { habits:{} };
+    const done = Object.values(d.habits || {}).filter(Boolean).length;
+    return total ? Math.round((done/total)*100) : 0;
+  };
 
   let monthOffset = 0;
 
@@ -117,20 +124,16 @@ export function renderHistory(state){
   const nextBtn = h("button", { class: "secondary", type: "button", onClick: () => { monthOffset++; renderMonth(); } }, "Next Month →");
   const controls = h("div", { style: "display:flex;gap:.5rem;align-items:center;margin:.5rem 0 1rem 0;" }, prevBtn, label, nextBtn);
 
-  const dow = h("div", { style: "display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:6px" },
-    h("div", { class: "muted", text: "Sun" }),
-    h("div", { class: "muted", text: "Mon" }),
-    h("div", { class: "muted", text: "Tue" }),
-    h("div", { class: "muted", text: "Wed" }),
-    h("div", { class: "muted", text: "Thu" }),
-    h("div", { class: "muted", text: "Fri" }),
-    h("div", { class: "muted", text: "Sat" })
+  // DOW header
+  const dow = h("div", { class: "history-dow", style: "display:grid;grid-template-columns:repeat(7,1fr);gap:8px" },
+    h("div", { text: "Sun" }), h("div", { text: "Mon" }), h("div", { text: "Tue" }),
+    h("div", { text: "Wed" }), h("div", { text: "Thu" }), h("div", { text: "Fri" }), h("div", { text: "Sat" })
   );
 
-  const cal = h("div", { class: "calendar" });
+  const cal = h("div", { class: "history-cal" });
   const popover = h("div", { class: "popover" });
 
-  // overlay
+  // Overlay (detail)
   const overlay = h("div", { class: "overlay", role: "dialog", "aria-modal": "true", "aria-hidden": "true" },
     h("article", { class: "detail", "aria-labelledby": "detail-title" },
       h("header", {},
@@ -158,8 +161,12 @@ export function renderHistory(state){
     )
   );
 
-  const cardEl = card("History — Calendar", controls, dow, cal, popover);
-  wrap.append(cardEl, overlay);
+  const historyCard = h("section", { class: "card card--compact history-card" },
+    h("h2", { text: "History — Calendar" }),
+    controls, dow, cal, popover
+  );
+
+  wrap.append(historyCard, overlay);
 
   function renderMonth(){
     const base = new Date();
@@ -183,8 +190,10 @@ export function renderHistory(state){
       const pct = h("div", { class: "pct", text: p ? `${p}%` : "" });
       cell.append(fill, date, pct);
 
+      // hover popover
       cell.addEventListener("mouseenter", (e) => showPopover(e.clientX, e.clientY, iso));
       cell.addEventListener("mouseleave", hidePopover);
+      // click overlay
       cell.addEventListener("click", () => openDetail(iso));
 
       cal.appendChild(cell);
@@ -278,7 +287,7 @@ export function renderHabits(state){
     const name = (new FormData(form).get("name") || "").toString().trim();
     if (!name) return;
     CTRL?.addHabit(name);
-    const ev = new Event("hashchange"); window.dispatchEvent(ev);
+    window.dispatchEvent(new Event("hashchange"));
     form.querySelector('[name="name"]').value = "";
   });
 
@@ -295,7 +304,7 @@ export function renderHabits(state){
           onClick: () => {
             if (confirm(`Delete habit "${habit.name}"? This won't remove past checkmarks.`)) {
               CTRL?.deleteHabit(habit.id);
-              const ev = new Event("hashchange"); window.dispatchEvent(ev);
+              window.dispatchEvent(new Event("hashchange"));
             }
           }
         }, "Delete")
