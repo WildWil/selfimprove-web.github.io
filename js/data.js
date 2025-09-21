@@ -1,19 +1,15 @@
-// /js/data.js
-let _quotesCache = null;
+// data.js — v0.1 data loaders
 
-export async function loadQuotes() {
-  if (_quotesCache) return _quotesCache;
-
-  try {
-    const res = await fetch('data/quotes.json', { cache: 'no-store' });
-    if (!res.ok) throw new Error('loadQuotes() fetch failed');
-    const json = await res.json();
-    // normalize: allow strings or {text}
-    _quotesCache = (json || []).map(q => typeof q === 'string' ? { text: q } : q);
-  } catch (e) {
-    // sensible fallback if file missing or fetch blocked in dev
-    _quotesCache = [{ text: 'Small daily wins compound into greatness.' }];
+export async function loadQuotes(){
+  // expects a public file at /data/quotes.json
+  // Format: [ "quote...", {"text":"quote..."} , ... ]
+  try{
+    const res = await fetch("./data/quotes.json", { cache: "no-store" });
+    if (!res.ok) throw new Error("quotes fetch failed");
+    const arr = await res.json();
+    return Array.isArray(arr) ? arr : [];
+  }catch{
+    // fallback to any global QUOTES already on page, else empty
+    return Array.isArray(window.QUOTES) ? window.QUOTES : [];
   }
-
-  return _quotesCache;
 }
