@@ -436,3 +436,31 @@ button.is-disabled{ opacity:.55; cursor:not-allowed; }
   font-style:normal;    /* author not italic */
 }
 
+/* Clickable habits: make it obvious */
+input[type="checkbox"],
+label.row,
+.row input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* Avoid accidental text highlight while tapping rows */
+label.row { user-select: none; }
+
+/* Keep vertical scrollbar space reserved so the page doesn't "jump" */
+html { scrollbar-gutter: stable both-edges; }
+
+/* === Mobile header/nav hardening === */
+.site-header .wrap { flex-wrap: wrap; gap: .5rem .75rem; } /* allow wrapping */
+.brand { flex: 1 1 auto; min-width: 0; }                   /* don't force overflow */
+.nav__list { flex-wrap: wrap; }                            /* let nav wrap to next line */
+.nav__link { white-space: nowrap; }                        /* avoid broken labels */
+
+@media (max-width: 420px){
+  .site-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .site-nav::-webkit-scrollbar { height: 6px; }
+}
+/* Safety: header should not create side-scroll */
+.site-header { overflow: hidden; }
+
+/* Ensure focus ring doesn't shift layout on checkboxes */
+input[type="checkbox"]:focus { border: none; }
