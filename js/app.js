@@ -154,6 +154,22 @@ function toggleHabitForToday(habitId, checked) {
   return days[iso];
 }
 
+function setJournalForDate(isoDate, text) {
+  const state = loadState();
+  const day = state.days[isoDate] || { habits: {}, ts: Date.now() };
+  day.journal = text || "";
+  day.ts = Date.now();
+  const days = { ...state.days, [isoDate]: day };
+  saveState({ days });
+  return days[isoDate];
+}
+
+function getJournalForDate(isoDate) {
+  const state = loadState();
+  return state.days?.[isoDate]?.journal || "";
+}
+
+
 /* -------- Backup / Restore -------- */
 function exportToFile() {
   const state = loadState();
@@ -238,6 +254,9 @@ function init() {
     getSaveKey,
     importFromFile,
     importFromKey,
+    setJournalForDate,
+    getJournalForDate,
+
   });
 
   const meta = { ...state.meta, lastOpenDate: Date.now() };
