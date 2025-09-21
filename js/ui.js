@@ -27,15 +27,30 @@ function card(title, ...body){
 }
 
 /* ------------------------------ TODAY ----------------------------------- */
-export function renderToday(state){
+export function renderToday(state) {
   const wrap = h("div", { class: "wrap" });
 
   const iso = todayISO();
   const day = state.days[iso] || { habits: {} };
 
+  const total = state.habits.length;
+  const done = Object.values(day.habits || {}).filter(Boolean).length;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+
+  // Progress header
+  const header = h("div", { style: "margin-bottom:1rem;" },
+    h("h2", { text: "Today" }),
+    h("p", { class: "muted" }, total ? `${done} of ${total} habits done` : "No habits yet"),
+    h("div", { class: "progress" },
+      h("div", { class: "progress-bar", style: `width:${pct}%;` })
+    )
+  );
+
   const list = h("div");
-  if (state.habits.length === 0) {
-    list.append(h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page."));
+  if (total === 0) {
+    list.append(
+      h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page.")
+    );
   } else {
     for (const habit of state.habits) {
       const checked = !!day.habits[habit.id];
@@ -56,9 +71,11 @@ export function renderToday(state){
     }
   }
 
-  wrap.append(card("Today", list));
+  const section = card("", header, list);
+  wrap.append(section);
   return wrap;
 }
+
 
 /* ------------------------------ HISTORY --------------------------------- */
 export function renderHistory(state){
