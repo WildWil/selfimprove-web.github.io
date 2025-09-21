@@ -267,60 +267,6 @@ export function renderHistory(state){
   return wrap;
 }
 
-
-  function renderWeek(){
-    // compute the 7-day window based on weekOffset
-    const today = new Date();
-    const start = addDays(today, weekOffset * -7);      // end of window (today when offset=0)
-    const end   = addDays(start, -6);                   // 6 days earlier (older date)
-
-    // label like: "Sep 18–Sep 24"
-    const label = `${fmtDate(dayISO(end))} – ${fmtDate(dayISO(start))}`;
-    rangeLabel.textContent = label;
-
-    // fill table body (newest first)
-    const tb = table.querySelector("tbody");
-    tb.innerHTML = "";
-    const totalHabits = state.habits.length;
-
-    for (let i=0; i<7; i++){
-      const d = addDays(start, -i);             // walk back day by day
-      const iso = dayISO(d);
-      const day = state.days[iso] || { habits: {} };
-      const doneCount = Object.values(day.habits || {}).filter(Boolean).length;
-      const snippet = (state.days?.[iso]?.journal || "").slice(0, 60);
-
-      tb.append(
-        h("tr", {},
-          h("td", { text: fmtDate(iso) }),
-          h("td", { text: totalHabits ? `${doneCount}/${totalHabits}` : "—" }),
-          h("td", { text: snippet })
-        )
-      );
-    }
-
-    // disable "Next 7" if we’re already at the most recent window
-    nextBtn.disabled = (weekOffset === 0);
-    nextBtn.classList.toggle("is-disabled", nextBtn.disabled);
-  }
-
-  prevBtn.addEventListener("click", () => { weekOffset += 1; renderWeek(); });
-  nextBtn.addEventListener("click", () => { if (weekOffset > 0) { weekOffset -= 1; renderWeek(); } });
-
-  wrap.append(
-    card("History (last 7 days)", rangeLabel, controls, table,
-      h("p", { class: "muted", style:"margin-top:.75rem" },
-        state.habits.length
-          ? "Tip: Add journal notes on the Journal tab — snippets appear here."
-          : "Add some habits on the Habits tab to start tracking."
-      )
-    )
-  );
-
-  renderWeek();
-  return wrap;
-}
-
 /* ------------------------------ HABITS ---------------------------------- */
 export function renderHabits(state){
   const wrap = h("div", { class: "wrap" });
