@@ -51,6 +51,30 @@ function card(title, ...body){
 export function renderToday(state) {
   const wrap = h("div", { class: "wrap" });
 
+// Optional welcome banner (shown once after onboarding)
+if (state.meta?.welcome) {
+  const dismiss = h("button", {
+    class: "secondary",
+    type: "button",
+    onClick: () => {
+      CTRL?.clearWelcome();
+      window.dispatchEvent(new Event("hashchange")); // re-render
+    }
+  }, "Got it ✕");
+
+  wrap.append(
+    (function(){
+      const s = h("section", { class: "card card--compact" });
+      s.append(
+        h("h2", { text: "Welcome 👋" }),
+        h("p", { class: "muted" }, "We added a few starter habits so you can see how things work. You can edit or delete them any time on the Habits tab."),
+        dismiss
+      );
+      return s;
+    })()
+  );
+}
+
   const iso = todayISO();
   const day = state.days[iso] || { habits: {} };
 
