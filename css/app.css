@@ -161,3 +161,62 @@ a:hover {
   clip: rect(0, 0, 0, 0);
   border: 0;
 }
+
+/* --- Controls for Settings / forms --- */
+.field-row{
+  display:grid;
+  grid-template-columns:140px 1fr;
+  gap:.75rem;
+  align-items:start;
+  margin-bottom:.75rem;
+}
+.field-label{
+  font-weight:600;
+  color:var(--color-muted);
+  padding-top:.5rem;
+}
+
+.input, textarea, input[type="text"]{
+  background:var(--color-bg);
+  color:var(--color-text);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:var(--radius);
+  padding:.5rem .6rem;
+  width:100%;
+}
+.input.code{ font-family:var(--font-mono); }
+
+.btn{
+  background:var(--color-accent);
+  color:#0b0e1a;
+  border:0;
+  border-radius:var(--radius);
+  padding:.45rem .75rem;
+  font-weight:600;
+  cursor:pointer;
+}
+.btn:hover{ filter:brightness(1.08); }
+.btn:active{ transform:translateY(1px); }
+
+.btn.warn{
+  background:var(--color-warn);
+  color:#2b2200;
+}
+
+button.secondary{
+  background:transparent;
+  color:var(--color-accent);
+  border:1px solid rgba(255,255,255,.15);
+  border-radius:var(--radius);
+  padding:.4rem .6rem;
+}
+
+input[type="file"]{
+  color:var(--color-text);
+}
+
+/* optional: nicer focus ring */
+:focus-visible{
+  outline:2px solid color-mix(in oklab, var(--color-accent) 70%, transparent);
+  outline-offset:2px;
+}
