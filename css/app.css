@@ -428,3 +428,11 @@ button.is-disabled{ opacity:.55; cursor:not-allowed; }
   line-height: 1;
   border-radius: 8px;
 }
+
+.quote .quote__author{
+  display:block;
+  margin-top:.35rem;
+  opacity:.8;
+  font-style:normal;    /* author not italic */
+}
+
