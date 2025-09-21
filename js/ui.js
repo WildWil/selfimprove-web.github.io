@@ -284,6 +284,23 @@ export function renderSettings(state){
   const wrap = h("div", { class: "wrap" });
   const version = document.getElementById("app-version")?.textContent || "";
 
+  // Theme selector
+  const themeSel = h("select", { class: "input" },
+    h("option", { value: "auto", text: "Auto (follow system)" }),
+    h("option", { value: "dark", text: "Dark" }),
+    h("option", { value: "light", text: "Light" })
+  );
+  themeSel.value = state.user?.theme || "auto";
+  themeSel.addEventListener("change", () => {
+    CTRL?.updateUser({ theme: themeSel.value });
+  });
+
+  // NEW: Preferences card (this is the “top” card)
+  const cardPrefs = card("Preferences",
+    fieldRow("Theme", themeSel)
+  );
+
+  // Backup & restore
   const exportBtn = h("button", { class: "btn", onClick: () => CTRL.exportToFile() }, "Export to JSON");
 
   const keyOut = h("textarea", { class: "input code", rows: 3, placeholder: "Your Save Key will appear here", readonly: true });
@@ -320,7 +337,12 @@ export function renderSettings(state){
     fieldRow("Import (Key)", h("div", {}, keyIn, h("div", { style: "height: 0.5rem" }), importKeyBtn)),
   );
 
-  const cardInfo = card("App", h("p", { class: "muted" }, `Version ${version}. Theme and PWA coming soon.`));
-  wrap.append(cardExport, cardInfo);
+  const cardInfo = card("App",
+    h("p", { class: "muted" }, `Version ${version}. Theme and PWA coming soon.`)
+  );
+
+  // Append in this order so Preferences shows at the top
+  wrap.append(cardPrefs, cardExport, cardInfo);
   return wrap;
 }
+
