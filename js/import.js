@@ -1,8 +1,5 @@
 // import.js — v0.2 file or key -> validated snapshot -> replace-all
 import { validateSnapshot } from "./validators.js";
-import { buildSnapshot, downloadSnapshot, encodeSaveKey } from "./export.js";
-import { readSnapshotFile, readSnapshotFromKey, applySnapshotReplaceAll } from "./import.js";
-
 
 /** File -> JSON object (validated) */
 export async function readSnapshotFile(file) {
