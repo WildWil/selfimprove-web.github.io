@@ -1,18 +1,18 @@
-// ui.js
-// v0.2 — Today + Habits + Journal + Settings (clean, no duplicates)
+// ui.js — v0.3 clean working views (Today, History, Habits, Journal, Settings)
 
 import { currentStreak, todayISO } from "./streaks.js";
 
 let CTRL = null;
 export function attachController(c) { CTRL = c; }
 
+// DOM helper — now handles .value correctly (for <input>/<textarea>)
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (k === "class") el.className = v;
     else if (k === "text") el.textContent = v;
-    else if (k === "value") {                 // <-- new special case
-      if ("value" in el) el.value = v;        // set property if it exists
+    else if (k === "value") {                // special: set DOM property first
+      if ("value" in el) el.value = v;
       else el.setAttribute("value", String(v));
     }
     else if (k.startsWith("on") && typeof v === "function") {
@@ -22,16 +22,21 @@ function h(tag, attrs = {}, ...children) {
       el.setAttribute(k, String(v));
     }
   }
-  for (const c of children.flat()) {
+  for (const c of (children ?? []).flat()) {
     if (c == null) continue;
     el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
   }
   return el;
 }
 
-/* ------------------------------ TODAY ----------------------------------- */
+function card(title, ...body) {
+  return h("section", { class: "card" }, h("h2", { text: title }), ...body);
+}
+
+/* -------------------------------- TODAY --------------------------------- */
 export function renderToday(state) {
   const wrap = h("div", { class: "wrap" });
+
   const iso = todayISO();
   const day = state.days[iso] || { habits: {} };
 
@@ -48,6 +53,7 @@ export function renderToday(state) {
           checked: checked ? "checked" : null,
           onchange: (e) => {
             CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
+            // quick re-render
             const ev = new Event("hashchange"); window.dispatchEvent(ev);
           }
         }),
@@ -57,18 +63,19 @@ export function renderToday(state) {
       list.append(row);
     }
   }
+
   wrap.append(card("Today", list));
   return wrap;
 }
 
-/* ------------------------------ HISTORY --------------------------------- */
+/* ------------------------------- HISTORY -------------------------------- */
 export function renderHistory(state) {
   const wrap = h("div", { class: "wrap" });
   wrap.append(card("History", h("p", { class: "placeholder__text" }, "Weekly calendar and summaries coming soon.")));
   return wrap;
 }
 
-/* ------------------------------ HABITS ---------------------------------- */
+/* -------------------------------- HABITS -------------------------------- */
 export function renderHabits(state) {
   const wrap = h("div", { class: "wrap" });
 
@@ -111,13 +118,12 @@ export function renderHabits(state) {
   return wrap;
 }
 
-/* ------------------------------ JOURNAL --------------------------------- */
+/* -------------------------------- JOURNAL ------------------------------- */
 export function renderJournal(state) {
   const wrap = h("div", { class: "wrap" });
 
-  // helpers to move by days
   const toISO = (d) => d.toISOString().slice(0,10);
-  const fromISO = (s) => new Date(s + "T12:00:00"); // safe local noon
+  const fromISO = (s) => new Date(s + "T12:00:00");
 
   let iso = todayISO();
 
@@ -126,14 +132,13 @@ export function renderJournal(state) {
   const ta = h("textarea", {
     class: "input",
     rows: 10,
-    placeholder: "Write your thoughts for today…",
-    value: CTRL?.getJournalForDate(iso) || ""
+    value: CTRL?.getJournalForDate(iso) || "",
+    placeholder: "Write your thoughts for today…"
   });
 
-  const counter = h("div", {
-    class: "mono",
-    style: "opacity:.6;font-size:.9rem;margin-top:.25rem;"
-  }, `${(ta.value || "").length} chars`);
+  const counter = h("div", { class: "mono", style: "opacity:.6;font-size:.9rem;margin-top:.25rem;" },
+    `${(ta.value || "").length} chars`
+  );
 
   // debounce autosave
   let t = null;
@@ -156,14 +161,16 @@ export function renderJournal(state) {
     counter.textContent = `${ta.value.length} chars`;
   }
 
-  prevBtn.addEventListener("click", () => {
-    const d = fromISO(iso); d.setDate(d.getDate() - 1);
-    loadDay(toISO(d));
-  });
-  nextBtn.addEventListener("click", () => {
-    const d = fromISO(iso); d.setDate(d.getDate() + 1);
-    loadDay(toISO(d));
-  });
+  prevBtn.addEventListener("click", () => { const d = fromISO(iso); d.setDate(d.getDate() - 1); loadDay(toISO(d)); });
+  nextBtn.addEventListener("click", () => { const d = fromISO(iso); d.setDate(d.getDate() + 1); loadDay(toISO(d)); });
+
+  // keyboard arrows
+  function onKey(e){
+    if (e.key === "ArrowLeft") { prevBtn.click(); e.preventDefault(); }
+    if (e.key === "ArrowRight") { nextBtn.click(); e.preventDefault(); }
+  }
+  wrap.addEventListener("keydown", onKey);
+  setTimeout(() => ta.focus(), 0); // focus for typing/keys
 
   const controls = h("div", { style: "display:flex;gap:.5rem;margin:.5rem 0 1rem 0;" }, prevBtn, nextBtn);
 
@@ -173,9 +180,7 @@ export function renderJournal(state) {
       controls,
       ta,
       counter,
-      h("p", { class: "muted", style: "opacity:.7;margin-top:.75rem;" },
-        "Autosaves after you pause typing. Use ←/→ buttons to switch days."
-      )
+      h("p", { class: "muted", style: "opacity:.7;margin-top:.75rem;" }, "Autosaves after you pause typing. Use ←/→ to move days.")
     )
   );
 
@@ -197,10 +202,7 @@ export function renderSettings(state) {
   const exportBtn = h("button", { class: "btn", onClick: () => CTRL.exportToFile() }, "Export to JSON");
 
   const keyOut = h("textarea", { class: "input code", rows: 3, placeholder: "Your Save Key will appear here", readonly: true });
-  const genKeyBtn = h("button", {
-    class: "btn",
-    onClick: () => { keyOut.value = CTRL.getSaveKey(); keyOut.focus(); keyOut.select(); }
-  }, "Generate Save Key");
+  const genKeyBtn = h("button", { class: "btn", onClick: () => { keyOut.value = CTRL.getSaveKey(); keyOut.focus(); keyOut.select(); } }, "Generate Save Key");
 
   const fileIn = h("input", { type: "file", accept: ".json,application/json" });
   const importFileBtn = h("button", {
@@ -208,12 +210,8 @@ export function renderSettings(state) {
     onClick: async () => {
       if (!fileIn.files?.[0]) return alert("Choose a file first.");
       if (!confirm("Replace ALL current data with this file?")) return;
-      try {
-        await CTRL.importFromFile(fileIn.files[0]);
-        alert("Import complete.");
-      } catch (e) {
-        alert("Import failed: " + e.message);
-      }
+      try { await CTRL.importFromFile(fileIn.files[0]); alert("Import complete."); }
+      catch (e) { alert("Import failed: " + e.message); }
     }
   }, "Import from File");
 
@@ -224,12 +222,8 @@ export function renderSettings(state) {
       const v = keyIn.value.trim();
       if (!v) return alert("Paste a key first.");
       if (!confirm("Replace ALL current data with this key?")) return;
-      try {
-        CTRL.importFromKey(v);
-        alert("Import complete.");
-      } catch (e) {
-        alert("Import failed: " + e.message);
-      }
+      try { CTRL.importFromKey(v); alert("Import complete."); }
+      catch (e) { alert("Import failed: " + e.message); }
     }
   }, "Import from Key");
 
@@ -242,7 +236,6 @@ export function renderSettings(state) {
   );
 
   const cardInfo = card("App", h("p", { class: "muted" }, `Version ${version}. Theme and PWA coming soon.`));
-
   wrap.append(cardExport, cardInfo);
   return wrap;
 }
