@@ -90,6 +90,11 @@ a:hover { text-decoration: underline; }
 
 .site-main { padding: calc(var(--space) * 2) var(--space); }
 
+/* Stick footer to the bottom of viewport */
+body{ min-height: 100dvh; display:flex; flex-direction:column; }
+.site-main{ flex: 1 0 auto; }
+.site-footer{ margin-top:auto; }
+
 /* Cards */
 .card {
   background: var(--color-surface);
@@ -318,11 +323,12 @@ button.is-disabled{ opacity:.55; cursor:not-allowed; }
 .dowstrip { color: var(--color-muted); font-weight:600; text-align:center; }
 .calendar  { display: grid; grid-template-columns: repeat(7,1fr); gap: 8px; }
 
-/* Day cell visuals (shared) */
+/* Day cell visuals (shared) — includes sizing/visibility fix */
 .cell{
+  width: 100%;                          /* ensure definite inline size for aspect-ratio */
   border: 1px solid var(--hairline);
   border-radius: 12px;
-  background: rgba(255,255,255,.02);
+  background: var(--track);             /* theme-aware (works in light mode) */
   position: relative;
   overflow: hidden;
 }
