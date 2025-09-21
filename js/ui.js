@@ -46,6 +46,15 @@ export function renderToday(state) {
     )
   );
 
+  // Quote of the Day
+  const quotes = window.QUOTES || []; // will load from quotes.js
+  let quoteText = "";
+  if (quotes.length) {
+    const idx = Math.floor((Date.now() / 86400000) % quotes.length); // same quote per day
+    quoteText = quotes[idx].text || quotes[idx];
+  }
+  const quoteEl = h("blockquote", { class: "quote" }, quoteText);
+
   const list = h("div");
   if (total === 0) {
     list.append(
@@ -71,7 +80,7 @@ export function renderToday(state) {
     }
   }
 
-  const section = card("", header, list);
+  const section = card("", header, quoteEl, list);
   wrap.append(section);
   return wrap;
 }
