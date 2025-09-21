@@ -131,11 +131,80 @@ export function renderJournal(state) {
 }
 
 /* ------------------------------ SETTINGS -------------------------------- */
+// inside ui.js (top of file with other imports)
+import { todayISO } from "./streaks.js"; // you likely already have this
+
+let CTRL = null;
+export function attachController(c){ CTRL = c; }
+
+// small helper to draw rows
+function fieldRow(label, controlEl) {
+  const row = h("div", { class: "field-row" },
+    h("label", { class: "field-label" }, label),
+    h("div", { class: "field-ctrl" }, controlEl)
+  );
+  return row;
+}
+
 export function renderSettings(state) {
   const wrap = h("div", { class: "wrap" });
   const version = document.getElementById("app-version")?.textContent || "";
-  wrap.append(
-    card("Settings", h("p", { class: "placeholder__text" }, `Theme, start of week, and export/import coming soon. App ${version}.`))
+
+  // Export
+  const exportBtn = h("button", { class: "btn", onClick: () => CTRL.exportToFile() }, "Export to JSON");
+
+  // Save Key
+  const keyOut = h("textarea", { class: "input code", rows: 3, placeholder: "Your Save Key will appear here", readonly: true });
+  const genKeyBtn = h("button", {
+    class: "btn",
+    onClick: () => { keyOut.value = CTRL.getSaveKey(); keyOut.focus(); keyOut.select(); }
+  }, "Generate Save Key");
+
+  // Import (file)
+  const fileIn = h("input", { type: "file", accept: ".json,application/json" });
+  const importFileBtn = h("button", {
+    class: "btn warn",
+    onClick: async () => {
+      if (!fileIn.files?.[0]) return alert("Choose a file first.");
+      if (!confirm("Replace ALL current data with this file?")) return;
+      try {
+        await CTRL.importFromFile(fileIn.files[0]);
+        alert("Import complete.");
+      } catch (e) {
+        alert("Import failed: " + e.message);
+      }
+    }
+  }, "Import from File");
+
+  // Import (key)
+  const keyIn = h("textarea", { class: "input code", rows: 3, placeholder: "Paste Save Key here…" });
+  const importKeyBtn = h("button", {
+    class: "btn warn",
+    onClick: () => {
+      const v = keyIn.value.trim();
+      if (!v) return alert("Paste a key first.");
+      if (!confirm("Replace ALL current data with this key?")) return;
+      try {
+        CTRL.importFromKey(v);
+        alert("Import complete.");
+      } catch (e) {
+        alert("Import failed: " + e.message);
+      }
+    }
+  }, "Import from Key");
+
+  const cardExport = card("Backup & Restore",
+    h("p", { class: "muted" }, "Export your data to a file or copy a compact Save Key. Import will REPLACE all current data."),
+    fieldRow("Export", exportBtn),
+    fieldRow("Save Key", h("div", {}, genKeyBtn, h("div", { style: "height: 0.5rem" }), keyOut)),
+    fieldRow("Import (File)", h("div", {}, fileIn, h("div", { style: "height: 0.5rem" }), importFileBtn)),
+    fieldRow("Import (Key)", h("div", {}, keyIn, h("div", { style: "height: 0.5rem" }), importKeyBtn)),
   );
+
+  const cardInfo = card("App",
+    h("p", { class: "muted" }, `Version ${version}. Theme and PWA coming soon.`)
+  );
+
+  wrap.append(cardExport, cardInfo);
   return wrap;
 }
