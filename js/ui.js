@@ -1,5 +1,5 @@
 // ui.js
-// v0.1 — minimal usable UI for Today + Habits with persistence
+// v0.2 — Today + Habits + Journal + Settings (clean, no duplicates)
 
 import { currentStreak, todayISO } from "./streaks.js";
 
@@ -10,7 +10,7 @@ function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs || {})) {
     if (k === "class") el.className = v;
-    else if (k === "text") { el.textContent = v; }
+    else if (k === "text") el.textContent = v;
     else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2).toLowerCase(), v);
     else if (v !== false && v != null) el.setAttribute(k, String(v));
   }
@@ -22,24 +22,18 @@ function h(tag, attrs = {}, ...children) {
 }
 
 function card(title, ...body) {
-  return h("section", { class: "card" },
-    h("h2", { text: title }),
-    ...body
-  );
+  return h("section", { class: "card" }, h("h2", { text: title }), ...body);
 }
 
 /* ------------------------------ TODAY ----------------------------------- */
 export function renderToday(state) {
   const wrap = h("div", { class: "wrap" });
-
   const iso = todayISO();
   const day = state.days[iso] || { habits: {} };
 
   const list = h("div");
   if (state.habits.length === 0) {
-    list.append(
-      h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page.")
-    );
+    list.append(h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page."));
   } else {
     for (const habit of state.habits) {
       const checked = !!day.habits[habit.id];
@@ -50,8 +44,6 @@ export function renderToday(state) {
           checked: checked ? "checked" : null,
           onchange: (e) => {
             CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
-            // re-render Today quickly to update streak chips
-            location.hash = "#/today"; // stays on same route, triggers render via hashchange if changed; fallback manual:
             const ev = new Event("hashchange"); window.dispatchEvent(ev);
           }
         }),
@@ -61,18 +53,14 @@ export function renderToday(state) {
       list.append(row);
     }
   }
-
-  const section = card("Today", list);
-  wrap.append(section);
+  wrap.append(card("Today", list));
   return wrap;
 }
 
 /* ------------------------------ HISTORY --------------------------------- */
 export function renderHistory(state) {
   const wrap = h("div", { class: "wrap" });
-  wrap.append(
-    card("History", h("p", { class: "placeholder__text" }, "Weekly calendar and summaries coming soon."))
-  );
+  wrap.append(card("History", h("p", { class: "placeholder__text" }, "Weekly calendar and summaries coming soon.")));
   return wrap;
 }
 
@@ -89,9 +77,8 @@ export function renderHabits(state) {
     const name = (new FormData(form).get("name") || "").toString().trim();
     if (!name) return;
     CTRL?.addHabit(name);
-    location.hash = "#/habits";
     const ev = new Event("hashchange"); window.dispatchEvent(ev);
-    (form.querySelector('[name="name"]')).value = "";
+    form.querySelector('[name="name"]').value = "";
   });
 
   const list = h("div");
@@ -107,7 +94,6 @@ export function renderHabits(state) {
           onclick: () => {
             if (confirm(`Delete habit "${habit.name}"? This won't remove past checkmarks.`)) {
               CTRL?.deleteHabit(habit.id);
-              location.hash = "#/habits";
               const ev = new Event("hashchange"); window.dispatchEvent(ev);
             }
           }
@@ -124,43 +110,30 @@ export function renderHabits(state) {
 /* ------------------------------ JOURNAL --------------------------------- */
 export function renderJournal(state) {
   const wrap = h("div", { class: "wrap" });
-  wrap.append(
-    card("Journal", h("p", { class: "placeholder__text" }, "Full journal entries and search will go here."))
-  );
+  wrap.append(card("Journal", h("p", { class: "placeholder__text" }, "Full journal entries and search will go here.")));
   return wrap;
 }
 
 /* ------------------------------ SETTINGS -------------------------------- */
-// inside ui.js (top of file with other imports)
-import { todayISO } from "./streaks.js"; // you likely already have this
-
-let CTRL = null;
-export function attachController(c){ CTRL = c; }
-
-// small helper to draw rows
 function fieldRow(label, controlEl) {
-  const row = h("div", { class: "field-row" },
+  return h("div", { class: "field-row" },
     h("label", { class: "field-label" }, label),
     h("div", { class: "field-ctrl" }, controlEl)
   );
-  return row;
 }
 
 export function renderSettings(state) {
   const wrap = h("div", { class: "wrap" });
   const version = document.getElementById("app-version")?.textContent || "";
 
-  // Export
   const exportBtn = h("button", { class: "btn", onClick: () => CTRL.exportToFile() }, "Export to JSON");
 
-  // Save Key
   const keyOut = h("textarea", { class: "input code", rows: 3, placeholder: "Your Save Key will appear here", readonly: true });
   const genKeyBtn = h("button", {
     class: "btn",
     onClick: () => { keyOut.value = CTRL.getSaveKey(); keyOut.focus(); keyOut.select(); }
   }, "Generate Save Key");
 
-  // Import (file)
   const fileIn = h("input", { type: "file", accept: ".json,application/json" });
   const importFileBtn = h("button", {
     class: "btn warn",
@@ -176,7 +149,6 @@ export function renderSettings(state) {
     }
   }, "Import from File");
 
-  // Import (key)
   const keyIn = h("textarea", { class: "input code", rows: 3, placeholder: "Paste Save Key here…" });
   const importKeyBtn = h("button", {
     class: "btn warn",
@@ -201,9 +173,7 @@ export function renderSettings(state) {
     fieldRow("Import (Key)", h("div", {}, keyIn, h("div", { style: "height: 0.5rem" }), importKeyBtn)),
   );
 
-  const cardInfo = card("App",
-    h("p", { class: "muted" }, `Version ${version}. Theme and PWA coming soon.`)
-  );
+  const cardInfo = card("App", h("p", { class: "muted" }, `Version ${version}. Theme and PWA coming soon.`));
 
   wrap.append(cardExport, cardInfo);
   return wrap;
