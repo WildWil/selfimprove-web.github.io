@@ -177,7 +177,25 @@ export function renderHabits(state){
   const wrap = h("div", { class: "wrap" });
 
   const form = h("form", { class: "row", style: "display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;" },
-    h("input", { type: "text", name: "name", placeholder: "New habit (e.g., Read 10 pages)", required: "required", style: "flex:1;min-width:240px;padding:.5rem;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:#0e1224;color:#e9edff;" }),
+    // BEFORE (had hard-coded dark colors)
+h("input", {
+  type: "text",
+  name: "name",
+  placeholder: "New habit (e.g., Read 10 pages)",
+  required: "required",
+  style: "flex:1;min-width:240px;padding:.5rem;border-radius:8px;border:1px solid rgba(255,255,255,.15);background:#0e1224;color:#e9edff;"
+}),
+
+// AFTER (lets theme CSS control colors)
+h("input", {
+  class: "input",
+  type: "text",
+  name: "name",
+  placeholder: "New habit (e.g., Read 10 pages)",
+  required: "required",
+  style: "flex:1;min-width:240px;"
+}),
+
     h("button", { type: "submit", class: "btn" }, "Add")
   );
   form.addEventListener("submit", (e) => {
