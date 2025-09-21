@@ -61,9 +61,88 @@ export function renderToday(state){
 }
 
 /* ------------------------------ HISTORY --------------------------------- */
-export function renderHistory(){
+export function renderHistory(state){
   const wrap = h("div", { class: "wrap" });
-  wrap.append(card("History", h("p", { class: "placeholder__text" }, "Weekly calendar and summaries coming soon.")));
+
+  // helpers
+  const dayISO = (d) => d.toISOString().slice(0,10);
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const fmtDate = (iso) => {
+    const d = new Date(iso + "T12:00:00");
+    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  };
+
+  // week navigation (0 = this week; -1 = previous week, etc.)
+  let weekOffset = 0;
+
+  const rangeLabel = h("div", { class: "mono", style: "opacity:.8;margin-bottom:.5rem;" }, "");
+  const prevBtn = h("button", { class: "secondary", type: "button" }, "← Prev 7");
+  const nextBtn = h("button", { class: "secondary", type: "button" }, "Next 7 →");
+
+  const controls = h("div", { style:"display:flex;gap:.5rem;margin:.5rem 0 1rem 0;" }, prevBtn, nextBtn);
+
+  // table shell
+  const table = h("table", { class: "table" },
+    h("thead", {},
+      h("tr", {},
+        h("th", { text: "Date" }),
+        h("th", { text: "Completed" }),
+        h("th", { text: "Journal" }),
+      )
+    ),
+    h("tbody")
+  );
+
+  function renderWeek(){
+    // compute the 7-day window based on weekOffset
+    const today = new Date();
+    const start = addDays(today, weekOffset * -7);      // end of window (today when offset=0)
+    const end   = addDays(start, -6);                   // 6 days earlier (older date)
+
+    // label like: "Sep 18–Sep 24"
+    const label = `${fmtDate(dayISO(end))} – ${fmtDate(dayISO(start))}`;
+    rangeLabel.textContent = label;
+
+    // fill table body (newest first)
+    const tb = table.querySelector("tbody");
+    tb.innerHTML = "";
+    const totalHabits = state.habits.length;
+
+    for (let i=0; i<7; i++){
+      const d = addDays(start, -i);             // walk back day by day
+      const iso = dayISO(d);
+      const day = state.days[iso] || { habits: {} };
+      const doneCount = Object.values(day.habits || {}).filter(Boolean).length;
+      const snippet = (state.days?.[iso]?.journal || "").slice(0, 60);
+
+      tb.append(
+        h("tr", {},
+          h("td", { text: fmtDate(iso) }),
+          h("td", { text: totalHabits ? `${doneCount}/${totalHabits}` : "—" }),
+          h("td", { text: snippet })
+        )
+      );
+    }
+
+    // disable "Next 7" if we’re already at the most recent window
+    nextBtn.disabled = (weekOffset === 0);
+    nextBtn.classList.toggle("is-disabled", nextBtn.disabled);
+  }
+
+  prevBtn.addEventListener("click", () => { weekOffset += 1; renderWeek(); });
+  nextBtn.addEventListener("click", () => { if (weekOffset > 0) { weekOffset -= 1; renderWeek(); } });
+
+  wrap.append(
+    card("History (last 7 days)", rangeLabel, controls, table,
+      h("p", { class: "muted", style:"margin-top:.75rem" },
+        state.habits.length
+          ? "Tip: Add journal notes on the Journal tab — snippets appear here."
+          : "Add some habits on the Habits tab to start tracking."
+      )
+    )
+  );
+
+  renderWeek();
   return wrap;
 }
 
