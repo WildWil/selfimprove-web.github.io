@@ -1,8 +1,10 @@
 /* app.css
-   v0.3 — themeable, organized, and responsive
+   v0.3.1 — themeable, organized, and responsive
    - Dark/Light via data-theme on <html>
    - Compact & responsive History calendar
-   - Small UX polish for buttons/focus/popover/overlay
+   - Header/mobile overflow fixes
+   - Button foreground colors per theme
+   - Overlay close button placement
 */
 
 /* =============================================================================
@@ -31,6 +33,10 @@
   --radius-lg: 16px;
   --shadow: 0 4px 18px rgba(0,0,0,.25);
   --space: 1rem;
+
+  /* NEW: button foregrounds */
+  --btn-fg-accent: #ffffff;  /* text on accent buttons */
+  --btn-fg-warn:   #2b2200;  /* text on yellow warn buttons */
 }
 
 /* Light theme override */
@@ -43,6 +49,10 @@
 
   --hairline: rgba(0,0,0,.12);
   --track:   rgba(0,0,0,.08);
+
+  /* NEW: button foregrounds tuned for light mode */
+  --btn-fg-accent: #ffffff;  /* white on blue = best contrast */
+  --btn-fg-warn:   #1d1500;  /* slightly darker text on yellow */
 }
 
 
@@ -52,6 +62,9 @@
 *,
 *::before,
 *::after { box-sizing: border-box; }
+
+/* Prevent accidental sideways scroll on mobile */
+html, body { overflow-x: hidden; }
 
 html, body {
   margin: 0;
@@ -75,10 +88,18 @@ a:hover { text-decoration: underline; }
    ========================================================================== */
 .wrap { max-width: 960px; margin: 0 auto; padding: 0 var(--space); }
 
+/* Sticky, no-bleed header */
 .site-header, .site-footer {
   background: var(--color-surface);
   border-bottom: 1px solid var(--hairline);
   box-shadow: var(--shadow);
+}
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  width: 100%;
+  overflow: hidden; /* hides any subpixel overflow that can cause cutoffs */
 }
 .site-header .wrap,
 .site-footer .wrap {
@@ -168,9 +189,10 @@ body{ min-height: 100dvh; display:flex; flex-direction:column; }
 }
 .input.code{ font-family: var(--font-mono); }
 
+/* Updated button colors to use theme vars */
 .btn{
   background: var(--color-accent);
-  color: #0b0e1a;
+  color: var(--btn-fg-accent);
   border: 0;
   border-radius: var(--radius);
   padding: .45rem .75rem;
@@ -180,7 +202,10 @@ body{ min-height: 100dvh; display:flex; flex-direction:column; }
 .btn:hover{ filter: brightness(1.08); }
 .btn:active{ transform: translateY(1px); }
 
-.btn.warn{ background: var(--color-warn); color: #2b2200; }
+.btn.warn{
+  background: var(--color-warn);
+  color: var(--btn-fg-warn);
+}
 
 button.secondary{
   background: transparent;
@@ -380,6 +405,7 @@ button.is-disabled{ opacity:.55; cursor:not-allowed; }
 .overlay.show{ display: grid; }
 .overlay.show .detail{ opacity: 1; transform: scale(1); }
 
+/* Chips inside overlay */
 .chips{ display:flex; gap:.5rem; flex-wrap:wrap; }
 .chip{
   border: 1px solid var(--hairline);
@@ -391,3 +417,14 @@ button.is-disabled{ opacity:.55; cursor:not-allowed; }
 .grid-two{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 @media (max-width:640px){ .grid-two{ grid-template-columns: 1fr; } }
 .journal{ margin-top: .5rem; white-space: pre-wrap; }
+
+/* NEW: place the Close button in the top-right of the overlay card */
+.detail header { position: relative; }
+#detail-close{
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: .25rem .5rem;
+  line-height: 1;
+  border-radius: 8px;
+}
