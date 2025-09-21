@@ -218,3 +218,34 @@ button.is-disabled{ opacity:.55; cursor:not-allowed; }
   padding-left: .75rem;
   margin: .75rem 0 1rem 0;
 }
+
+/* History calendar */
+.dowstrip{ color:var(--color-muted); font-weight:600; text-align:center }
+.calendar{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px }
+.cell{ aspect-ratio:1/1; border:1px solid var(--hairline); border-radius:12px; background:rgba(255,255,255,.02); position:relative; overflow:hidden }
+.cell .date{ position:absolute; top:6px; left:8px; font-size:.8rem; color:var(--color-muted) }
+.cell .fill{ position:absolute; inset:auto 0 0 0; height:0; background:linear-gradient(to top, var(--color-accent), transparent); opacity:.55 }
+.cell .pct{ position:absolute; bottom:6px; right:8px; font-size:.75rem; opacity:.8 }
+.cell.today{ outline:2px solid var(--color-accent); outline-offset:2px }
+.cell.empty{ background:transparent; border-style:dashed; opacity:.35 }
+
+/* Hover snippet */
+.popover{ position:fixed; z-index:10; min-width:260px; max-width:360px; background:var(--color-surface);
+  border:1px solid var(--hairline); border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.45); padding:12px; display:none }
+.popover h3{ margin:0 0 6px; font-size:1rem }
+.popover .muted{ color:var(--color-muted) }
+.popover .snippet{ margin-top:6px; color:var(--color-muted); font-style:italic }
+
+/* Full detail overlay */
+.overlay{ position:fixed; inset:0; display:none; place-items:center; z-index:20; background:rgba(0,0,0,.35); backdrop-filter:saturate(120%) blur(2px) }
+.detail{ width:min(720px,92vw); max-height:88vh; overflow:auto; background:var(--color-surface); border:1px solid var(--hairline);
+  border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,.55); padding:16px 18px; opacity:0; transform:scale(.96);
+  transition:opacity .18s ease, transform .18s ease }
+.overlay.show{ display:grid }
+.overlay.show .detail{ opacity:1; transform:scale(1) }
+.chips{ display:flex; gap:.5rem; flex-wrap:wrap }
+.chip{ border:1px solid var(--hairline); border-radius:999px; padding:.2rem .55rem; font-size:.85rem; color:var(--color-muted) }
+.grid-two{ display:grid; grid-template-columns:1fr 1fr; gap:12px }
+@media (max-width:640px){ .grid-two{ grid-template-columns:1fr } }
+.journal{ margin-top:.5rem; white-space:pre-wrap }
+
