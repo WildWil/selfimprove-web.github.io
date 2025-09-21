@@ -13,6 +13,8 @@ import {
 import { todayISO } from "./streaks.js";
 import { buildSnapshot, downloadSnapshot, encodeSaveKey } from "./export.js";
 import { readSnapshotFile, readSnapshotFromKey, applySnapshotReplaceAll } from "./import.js";
+import { runOnboardingIfNeeded } from "./onboarding.js";
+
 
 /* ----------------------------- Constants -------------------------------- */
 const APP_VERSION = "0.1.0";
@@ -190,13 +192,26 @@ function getJournalForDate(isoDate) {
   return state.days?.[isoDate]?.journal || "";
 }
 
-// Update user prefs (e.g., theme)
 function updateUser(patch) {
   const state = loadState();
   const next = { ...state.user, ...patch };
   saveState({ user: next });
   if ("theme" in patch) applyTheme(next.theme);
   return next;
+}
+
+function updateUser(partialUser) {
+  const state = loadState();
+  const user = { ...(state.user || {}), ...(partialUser || {}) };
+  saveState({ user });
+  return user;
+}
+
+function clearWelcome() {
+  const state = loadState();
+  const meta = { ...(state.meta || {}), welcome: false };
+  saveState({ meta });
+  return meta;
 }
 
 /* -------- Backup / Restore -------- */
