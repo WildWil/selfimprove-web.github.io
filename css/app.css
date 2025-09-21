@@ -261,3 +261,22 @@ textarea.input{min-height:10rem;resize:vertical}
 /* subtle outline so cards don't visually merge on dark bg */
 .card{ border:1px solid rgba(255,255,255,.06); }
 
+/* hide until focused, then show as a small chip */
+.skip-link{
+  position:absolute;
+  left:-9999px;
+  top:0;
+}
+.skip-link:focus{
+  left:1rem;
+  top:1rem;
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding:.5rem .75rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  z-index:1000;
+  text-decoration:none;
+}
+
+
