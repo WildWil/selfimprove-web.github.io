@@ -252,3 +252,12 @@ textarea.input{min-height:10rem;resize:vertical}
   .field-row{grid-template-columns: 1fr}
 }
 
+/* space between stacked sections */
+.wrap > .card { margin: 1rem 0; }          /* default */
+@media (min-width: 768px){
+  .wrap > .card { margin: 1.25rem 0; }     /* a touch more on desktop */
+}
+
+/* subtle outline so cards don't visually merge on dark bg */
+.card{ border:1px solid rgba(255,255,255,.06); }
+
