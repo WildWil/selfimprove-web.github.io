@@ -1,6 +1,7 @@
 // ui.js — v0.6 (Today, History Calendar, Habits, Journal, Settings)
 
 import { currentStreak, todayISO } from "./streaks.js";
+import { loadQuotes } from './data.js';
 
 let CTRL = null;
 export function attachController(c){ CTRL = c; }
@@ -67,11 +68,12 @@ export function renderToday(state) {
   );
 
   // Quote of the day (keeps same quote per day)
-  const quotes = window.QUOTES || [];
-  const quoteText = quotes.length
-    ? (quotes[Math.floor((Date.now() / 86400000) % quotes.length)].text || quotes[Math.floor((Date.now() / 86400000) % quotes.length)])
-    : "";
-  const quoteEl = h("blockquote", { class: "quote" }, quoteText);
+  const quoteEl = h("blockquote", { class: "quote" }, ""); // placeholder
+loadQuotes().then(quotes => {
+  if (!quotes.length) return;
+  const idx = Math.floor((Date.now() / 86400000) % quotes.length);
+  quoteEl.textContent = quotes[idx]?.text ?? "";
+});
 
   const list = h("div");
   if (total === 0) {
