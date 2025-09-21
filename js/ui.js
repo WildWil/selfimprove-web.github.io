@@ -1,21 +1,42 @@
-// ui.js — v0.5 full views (Today, History, Habits, Journal, Settings)
+// ui.js — v0.6 (Today, History Calendar, Habits, Journal, Settings)
 
 import { currentStreak, todayISO } from "./streaks.js";
 
 let CTRL = null;
 export function attachController(c){ CTRL = c; }
 
-// DOM helper with proper .value handling
+/* --------------------------- DOM helper --------------------------------- */
+// Safer element helper: prefers DOM properties (e.g., checked), supports
+// onClick/onclick/oninput…, and falls back to attributes only when needed.
 function h(tag, attrs = {}, ...children){
   const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs || {})) {
-    if (k === "class") el.className = v;
-    else if (k === "text") el.textContent = v;
-    else if (k === "value") { if ("value" in el) el.value = v; else el.setAttribute("value", String(v)); }
-    else if (k.startsWith("on") && typeof v === "function") el.addEventListener(k.slice(2).toLowerCase(), v);
-    else if (v !== false && v != null) el.setAttribute(k, String(v));
+
+  if (attrs) {
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null || v === false) continue;
+
+      if (k === "class") el.className = v;
+      else if (k === "text") el.textContent = v;
+      else if (k === "value") {
+        if ("value" in el) el.value = v;
+        else el.setAttribute("value", String(v));
+      }
+      else if (k.startsWith("on") && typeof v === "function") {
+        el.addEventListener(k.slice(2).toLowerCase(), v);
+      }
+      else if (k in el) {
+        el[k] = v; // set as DOM property (e.g., checked, disabled)
+      }
+      else {
+        el.setAttribute(k, String(v));
+      }
+    }
   }
-  for (const c of (children ?? []).flat()) if (c != null) el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+
+  for (const c of (children ?? []).flat()) {
+    if (c == null) continue;
+    el.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  }
   return el;
 }
 
@@ -37,7 +58,6 @@ export function renderToday(state) {
   const done = Object.values(day.habits || {}).filter(Boolean).length;
   const pct = total ? Math.round((done / total) * 100) : 0;
 
-  // Progress header
   const header = h("div", { style: "margin-bottom:1rem;" },
     h("h2", { text: "Today" }),
     h("p", { class: "muted" }, total ? `${done} of ${total} habits done` : "No habits yet"),
@@ -46,30 +66,28 @@ export function renderToday(state) {
     )
   );
 
-  // Quote of the Day
-  const quotes = window.QUOTES || []; // will load from quotes.js
-  let quoteText = "";
-  if (quotes.length) {
-    const idx = Math.floor((Date.now() / 86400000) % quotes.length); // same quote per day
-    quoteText = quotes[idx].text || quotes[idx];
-  }
+  // Quote of the day (keeps same quote per day)
+  const quotes = window.QUOTES || [];
+  const quoteText = quotes.length
+    ? (quotes[Math.floor((Date.now() / 86400000) % quotes.length)].text || quotes[Math.floor((Date.now() / 86400000) % quotes.length)])
+    : "";
   const quoteEl = h("blockquote", { class: "quote" }, quoteText);
 
   const list = h("div");
   if (total === 0) {
-    list.append(
-      h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page.")
-    );
+    list.append(h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page."));
   } else {
     for (const habit of state.habits) {
       const checked = !!day.habits[habit.id];
       const streak = currentStreak(habit.id, state.days);
+
       const row = h("label", { class: "row", style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;" },
         h("input", {
           type: "checkbox",
-          checked: checked ? "checked" : null,
+          checked: checked,
           onchange: (e) => {
             CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
+            // re-render today quickly
             const ev = new Event("hashchange"); window.dispatchEvent(ev);
           }
         }),
@@ -80,34 +98,19 @@ export function renderToday(state) {
     }
   }
 
-  const section = card("", header, quoteEl, list);
-  wrap.append(section);
+  wrap.append(card("", header, quoteEl, list));
   return wrap;
 }
 
-
-/* ------------------------------ HISTORY --------------------------------- */
 /* ------------------------------ HISTORY (Calendar + Overlay) ------------- */
 export function renderHistory(state){
   const wrap = h("div", { class: "wrap" });
 
-  // ---------- local helpers ----------
+  // helpers
   const ymd = (d) => d.toISOString().slice(0,10);
   const firstOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
-  const startOfCalendar = (date) => {
-    const f = firstOfMonth(date);
-    const s = new Date(f);
-    s.setDate(f.getDate() - f.getDay()); // back to Sun
-    return s;
-  };
-  const endOfCalendar = (date) => {
-    const f = firstOfMonth(date);
-    const e = new Date(f.getFullYear(), f.getMonth()+1, 0); // last of month
-    const pad = 6 - e.getDay();
-    const ret = new Date(e);
-    ret.setDate(e.getDate()+pad); // forward to Sat
-    return ret;
-  };
+  const startOfCalendar = (date) => { const f = firstOfMonth(date); const s = new Date(f); s.setDate(f.getDate() - f.getDay()); return s; };
+  const endOfCalendar = (date) => { const f = firstOfMonth(date); const e = new Date(f.getFullYear(), f.getMonth()+1, 0); const pad = 6 - e.getDay(); const r = new Date(e); r.setDate(e.getDate()+pad); return r; };
   const pctFor = (iso) => {
     const total = state.habits.length;
     const day = state.days[iso] || { habits:{} };
@@ -115,22 +118,27 @@ export function renderHistory(state){
     return total ? Math.round((done/total)*100) : 0;
   };
 
-  // ---------- UI skeleton ----------
-  let monthOffset = 0; // 0=current, -1=prev, +1=next
+  let monthOffset = 0;
 
   const label = h("div", { class: "mono", style: "text-align:center;flex:1;" });
-  const prevBtn = h("button", { class: "secondary", type: "button", onclick: () => { monthOffset--; renderMonth(); } }, "← Prev Month");
-  const nextBtn = h("button", { class: "secondary", type: "button", onclick: () => { monthOffset++; renderMonth(); } }, "Next Month →");
+  const prevBtn = h("button", { class: "secondary", type: "button", onClick: () => { monthOffset--; renderMonth(); } }, "← Prev Month");
+  const nextBtn = h("button", { class: "secondary", type: "button", onClick: () => { monthOffset++; renderMonth(); } }, "Next Month →");
   const controls = h("div", { style: "display:flex;gap:.5rem;align-items:center;margin:.5rem 0 1rem 0;" }, prevBtn, label, nextBtn);
 
-  // days-of-week strip
-  const dow = h("div", { class: "dowstrip", style: "display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:6px" },
-    h("div", { text: "Sun" }), h("div", { text: "Mon" }), h("div", { text: "Tue" }),
-    h("div", { text: "Wed" }), h("div", { text: "Thu" }), h("div", { text: "Fri" }), h("div", { text: "Sat" })
+  const dow = h("div", { style: "display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:6px" },
+    h("div", { class: "muted", text: "Sun" }),
+    h("div", { class: "muted", text: "Mon" }),
+    h("div", { class: "muted", text: "Tue" }),
+    h("div", { class: "muted", text: "Wed" }),
+    h("div", { class: "muted", text: "Thu" }),
+    h("div", { class: "muted", text: "Fri" }),
+    h("div", { class: "muted", text: "Sat" })
   );
 
   const cal = h("div", { class: "calendar" });
-  const popover = h("div", { class: "popover" }); // positioned fixed via CSS
+  const popover = h("div", { class: "popover" });
+
+  // overlay
   const overlay = h("div", { class: "overlay", role: "dialog", "aria-modal": "true", "aria-hidden": "true" },
     h("article", { class: "detail", "aria-labelledby": "detail-title" },
       h("header", {},
@@ -161,7 +169,6 @@ export function renderHistory(state){
   const cardEl = card("History — Calendar", controls, dow, cal, popover);
   wrap.append(cardEl, overlay);
 
-  // ---------- behavior ----------
   function renderMonth(){
     const base = new Date();
     base.setMonth(base.getMonth() + monthOffset);
@@ -184,11 +191,8 @@ export function renderHistory(state){
       const pct = h("div", { class: "pct", text: p ? `${p}%` : "" });
       cell.append(fill, date, pct);
 
-      // hover popover
       cell.addEventListener("mouseenter", (e) => showPopover(e.clientX, e.clientY, iso));
       cell.addEventListener("mouseleave", hidePopover);
-
-      // click overlay
       cell.addEventListener("click", () => openDetail(iso));
 
       cal.appendChild(cell);
@@ -205,15 +209,15 @@ export function renderHistory(state){
       h("div", { class: "muted", text: `Completed: ${p}%` }),
       j ? h("div", { class: "snippet", text: j.length > 140 ? j.slice(0,140) + "…" : j }) : null
     );
-    popover.style.display = "block";
     const pad = 10;
+    popover.style.display = "block";
     popover.style.position = "fixed";
     popover.style.left = (x + pad) + "px";
     popover.style.top  = (y + pad) + "px";
   }
   function hidePopover(){ popover.style.display = "none"; }
 
-  function chip(text){ const c = h("div", { class: "chip", text }); return c; }
+  function chip(text){ return h("div", { class: "chip", text }); }
 
   function openDetail(iso){
     hidePopover();
@@ -224,17 +228,14 @@ export function renderHistory(state){
     const total = state.habits.length;
     const done = Object.values(doneMap).filter(Boolean).length;
 
-    // header
     wrap.querySelector("#detail-title").textContent = d.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
     wrap.querySelector("#detail-sub").textContent = `${iso} • Completed ${p}%`;
 
-    // chips
     const chips = wrap.querySelector("#detail-chips"); chips.innerHTML = "";
     chips.append(chip(`${done}/${total} habits`));
     if (p === 100) chips.append(chip("Perfect day"));
     else if (p >= 60) chips.append(chip("Solid progress"));
 
-    // habits list
     const list = wrap.querySelector("#detail-habits"); list.innerHTML = "";
     for (const hbt of state.habits){
       const ok = !!doneMap[hbt.id];
@@ -244,7 +245,6 @@ export function renderHistory(state){
       list.append(row);
     }
 
-    // summary + journal
     wrap.querySelector("#detail-summary").textContent = p ? `You completed ${done} of ${total} habits.` : "No habits completed this day.";
     wrap.querySelector("#detail-journal").textContent = j || "— No journal entry —";
 
@@ -257,12 +257,10 @@ export function renderHistory(state){
     overlay.setAttribute("aria-hidden", "true");
   }
 
-  // close handlers
   wrap.querySelector("#detail-close").addEventListener("click", closeDetail);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeDetail(); });
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 
-  // first render
   renderMonth();
   return wrap;
 }
@@ -272,19 +270,17 @@ export function renderHabits(state){
   const wrap = h("div", { class: "wrap" });
 
   const form = h("form", { class: "row", style: "display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;" },
-
-// AFTER (lets theme CSS control colors)
-h("input", {
-  class: "input",
-  type: "text",
-  name: "name",
-  placeholder: "New habit (e.g., Read 10 pages)",
-  required: "required",
-  style: "flex:1;min-width:240px;"
-}),
-
+    h("input", {
+      class: "input",
+      type: "text",
+      name: "name",
+      placeholder: "New habit (e.g., Read 10 pages)",
+      required: "required",
+      style: "flex:1;min-width:240px;"
+    }),
     h("button", { type: "submit", class: "btn" }, "Add")
   );
+
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     const name = (new FormData(form).get("name") || "").toString().trim();
@@ -304,7 +300,7 @@ h("input", {
         h("button", {
           class: "secondary",
           type: "button",
-          onclick: () => {
+          onClick: () => {
             if (confirm(`Delete habit "${habit.name}"? This won't remove past checkmarks.`)) {
               CTRL?.deleteHabit(habit.id);
               const ev = new Event("hashchange"); window.dispatchEvent(ev);
@@ -362,7 +358,6 @@ export function renderJournal(state){
   prevBtn.addEventListener("click", () => { const d = fromISO(iso); d.setDate(d.getDate() - 1); loadDay(toISO(d)); });
   nextBtn.addEventListener("click", () => { const d = fromISO(iso); d.setDate(d.getDate() + 1); loadDay(toISO(d)); });
 
-  // keyboard ←/→
   wrap.addEventListener("keydown", (e) => {
     if (e.key === "ArrowLeft") { prevBtn.click(); e.preventDefault(); }
     if (e.key === "ArrowRight") { nextBtn.click(); e.preventDefault(); }
@@ -389,23 +384,18 @@ export function renderSettings(state){
   const wrap = h("div", { class: "wrap" });
   const version = document.getElementById("app-version")?.textContent || "";
 
-  // Theme selector
   const themeSel = h("select", { class: "input" },
     h("option", { value: "auto", text: "Auto (follow system)" }),
     h("option", { value: "dark", text: "Dark" }),
     h("option", { value: "light", text: "Light" })
   );
   themeSel.value = state.user?.theme || "auto";
-  themeSel.addEventListener("change", () => {
-    CTRL?.updateUser({ theme: themeSel.value });
-  });
+  themeSel.addEventListener("change", () => CTRL?.updateUser?.({ theme: themeSel.value }));
 
-  // NEW: Preferences card (this is the “top” card)
   const cardPrefs = card("Preferences",
     fieldRow("Theme", themeSel)
   );
 
-  // Backup & restore
   const exportBtn = h("button", { class: "btn", onClick: () => CTRL.exportToFile() }, "Export to JSON");
 
   const keyOut = h("textarea", { class: "input code", rows: 3, placeholder: "Your Save Key will appear here", readonly: true });
@@ -446,8 +436,6 @@ export function renderSettings(state){
     h("p", { class: "muted" }, `Version ${version}. Theme and PWA coming soon.`)
   );
 
-  // Append in this order so Preferences shows at the top
   wrap.append(cardPrefs, cardExport, cardInfo);
   return wrap;
 }
-
