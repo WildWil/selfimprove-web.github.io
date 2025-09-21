@@ -209,6 +209,10 @@ button.secondary{
   border:1px solid rgba(255,255,255,.15);
   border-radius:var(--radius);
   padding:.4rem .6rem;
+  cursor:pointer;                 /* make it feel clickable */
+}
+button.secondary:hover{
+  background: rgba(122,162,255,0.12);
 }
 
 input[type="file"]{
