@@ -1,466 +1,339 @@
-/* app.css
-   v0.3.1 — themeable, organized, and responsive
-   - Dark/Light via data-theme on <html>
-   - Compact & responsive History calendar
-   - Header/mobile overflow fixes
-   - Button foreground colors per theme
-   - Overlay close button placement
-*/
+// app.js
+// v0.3 — bootstrap, storage, hash-router, backup/export, theme support
 
-/* =============================================================================
-   THEME VARIABLES
-   ========================================================================== */
-/* Default = dark */
-:root,
-:root[data-theme="dark"] {
-  --color-bg: #0f1220;
-  --color-surface: #171a2b;
-  --color-text: #e9edff;
-  --color-muted: #aab3cf;
-  --color-accent: #7aa2ff;
-  --color-ok: #6ee7a2;
-  --color-warn: #ffd36e;
-  --color-err: #ff7a7a;
+import {
+  renderToday,
+  renderHistory,
+  renderHabits,
+  renderJournal,
+  renderSettings,
+  attachController
+} from "./ui.js";
 
-  /* theme-dependent neutrals */
-  --hairline: rgba(255,255,255,.12);  /* borders */
-  --track:   rgba(255,255,255,.08);   /* tracks/hover tints */
+import { todayISO } from "./streaks.js";
+import { buildSnapshot, downloadSnapshot, encodeSaveKey } from "./export.js";
+import { readSnapshotFile, readSnapshotFromKey, applySnapshotReplaceAll } from "./import.js";
+import { runOnboardingIfNeeded } from "./onboarding.js";
 
-  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, Inter, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-  --radius: 12px;
-  --radius-lg: 16px;
-  --shadow: 0 4px 18px rgba(0,0,0,.25);
-  --space: 1rem;
+/* ----------------------------- Constants -------------------------------- */
+const APP_VERSION = "0.1.0";
+const NS = "selftrack";
+const KEYS = {
+  user: `${NS}:user`,
+  habits: `${NS}:habits`,
+  days: `${NS}:days`,
+  meta: `${NS}:meta`,
+  version: `${NS}:version`,
+};
 
-  /* NEW: button foregrounds */
-  --btn-fg-accent: #ffffff;  /* text on accent buttons */
-  --btn-fg-warn:   #2b2200;  /* text on yellow warn buttons */
+const DEFAULTS = Object.freeze({
+  user: {
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    theme: "auto", // auto | dark | light
+    startOfWeek: 1, // 0=Sun, 1=Mon
+  },
+  habits: [],
+  days: {},
+  meta: {
+    installDate: Date.now(),
+    lastOpenDate: null,
+    streaksByHabit: {},
+  },
+});
+
+/* ------------------------------ Storage --------------------------------- */
+const storage = {
+  get(key, fallback = null) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  set(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+  },
+  has(key) {
+    return localStorage.getItem(key) !== null;
+  },
+};
+
+function ensureInitialized() {
+  if (!storage.has(KEYS.version)) storage.set(KEYS.version, APP_VERSION);
+  if (!storage.has(KEYS.user)) storage.set(KEYS.user, DEFAULTS.user);
+  if (!storage.has(KEYS.habits)) storage.set(KEYS.habits, DEFAULTS.habits);
+  if (!storage.has(KEYS.days)) storage.set(KEYS.days, DEFAULTS.days);
+  if (!storage.has(KEYS.meta)) storage.set(KEYS.meta, DEFAULTS.meta);
 }
 
-/* Light theme override */
-:root[data-theme="light"] {
-  --color-bg: #f9faff;
-  --color-surface: #ffffff;
-  --color-text: #0b0e1a;
-  --color-muted: #5f6c92;
-  --color-accent: #3058d4;
-
-  --hairline: rgba(0,0,0,.12);
-  --track:   rgba(0,0,0,.08);
-
-  /* NEW: button foregrounds tuned for light mode */
-  --btn-fg-accent: #ffffff;  /* white on blue = best contrast */
-  --btn-fg-warn:   #1d1500;  /* slightly darker text on yellow */
+function loadState() {
+  return {
+    user: storage.get(KEYS.user, DEFAULTS.user),
+    habits: storage.get(KEYS.habits, DEFAULTS.habits),
+    days: storage.get(KEYS.days, DEFAULTS.days),
+    meta: storage.get(KEYS.meta, DEFAULTS.meta),
+    version: storage.get(KEYS.version, APP_VERSION),
+  };
 }
 
-
-/* =============================================================================
-   RESET & BASE
-   ========================================================================== */
-*,
-*::before,
-*::after { box-sizing: border-box; }
-
-/* Prevent accidental sideways scroll on mobile */
-html, body { overflow-x: hidden; }
-
-html, body {
-  margin: 0;
-  padding: 0;
-  font-family: var(--font-body);
-  background: var(--color-bg);
-  color: var(--color-text);
-  min-height: 100%;
-  line-height: 1.5;
-  -webkit-text-size-adjust: 100%;
+function saveState(partial) {
+  if (partial.user) storage.set(KEYS.user, partial.user);
+  if (partial.habits) storage.set(KEYS.habits, partial.habits);
+  if (partial.days) storage.set(KEYS.days, partial.days);
+  if (partial.meta) storage.set(KEYS.meta, partial.meta);
 }
 
-img, svg { max-width: 100%; display: block; }
+let LAST_ROUTE = null;
 
-a { color: var(--color-accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
+/* ------------------------------ Utilities ------------------------------- */
+const qs = (sel, el = document) => el.querySelector(sel);
+const qsa = (sel, el = document) => [...el.querySelectorAll(sel)];
 
-
-/* =============================================================================
-   LAYOUT
-   ========================================================================== */
-.wrap { max-width: 960px; margin: 0 auto; padding: 0 var(--space); }
-
-/* Sticky, no-bleed header */
-.site-header, .site-footer {
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--hairline);
-  box-shadow: var(--shadow);
-}
-.site-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  width: 100%;
-  overflow: hidden; /* hides any subpixel overflow that can cause cutoffs */
-}
-.site-header .wrap,
-.site-footer .wrap {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space);
+function setBusy(isBusy) {
+  const root = qs("#app-root");
+  if (!root) return;
+  root.setAttribute("aria-busy", String(isBusy));
 }
 
-.site-main { padding: calc(var(--space) * 2) var(--space); }
-
-/* Stick footer to the bottom of viewport */
-body{ min-height: 100dvh; display:flex; flex-direction:column; }
-.site-main{ flex: 1 0 auto; }
-.site-footer{ margin-top:auto; }
-
-/* Cards */
-.card {
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: var(--space);
-  box-shadow: var(--shadow);
-  border: 1px solid var(--hairline);
+function setVersionBadge() {
+  const el = qs("#app-version");
+  if (el) el.textContent = `v${APP_VERSION}`;
 }
 
-/* Spacing between stacked sections */
-.wrap > .card { margin: 1rem 0; }
-@media (min-width: 768px){
-  .wrap > .card { margin: 1.25rem 0; }
+function getRoute() {
+  const hash = (location.hash || "#/today").toLowerCase();
+  const route = hash.replace(/^#\//, "");
+  const valid = new Set(["today", "history", "habits", "journal", "settings"]);
+  return valid.has(route) ? route : "today";
 }
 
-/* A smaller padding variant for dense screens (used by History) */
-.card--compact { padding: clamp(12px, 2.5vw, 16px); }
-
-
-/* =============================================================================
-   NAV
-   ========================================================================== */
-.nav__list {
-  list-style: none;
-  display: flex;
-  gap: var(--space);
-  margin: 0;
-  padding: 0;
-}
-.nav__link {
-  padding: .5rem .75rem;
-  border-radius: var(--radius);
-  transition: background .2s;
-}
-.nav__link:hover,
-.nav__link[aria-current="page"] {
-  background: color-mix(in oklab, var(--color-accent) 18%, transparent);
+function setActiveNav(route) {
+  qsa('[data-route]').forEach(a => {
+    if (a.getAttribute("data-route") === route) {
+      a.setAttribute("aria-current", "page");
+    } else {
+      a.removeAttribute("aria-current");
+    }
+  });
 }
 
-/* Better keyboard focus for nav */
-.nav__link:focus-visible{
-  outline: 2px solid color-mix(in oklab, var(--color-accent) 75%, transparent);
-  outline-offset: 2px;
-  border-radius: var(--radius);
+/* ------------------------------ Theme ----------------------------------- */
+const systemDarkQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+
+function resolveTheme(pref) {
+  if (pref === "dark" || pref === "light") return pref;
+  return systemDarkQuery?.matches ? "dark" : "light"; // auto
 }
 
-
-/* =============================================================================
-   FORMS & CONTROLS
-   ========================================================================== */
-.field-row{
-  display: grid;
-  grid-template-columns: 140px 1fr;
-  gap: .75rem;
-  align-items: start;
-  margin-bottom: .75rem;
-}
-.field-label{
-  font-weight: 600;
-  color: var(--color-muted);
-  padding-top: .5rem;
+function applyTheme(pref) {
+  const resolved = resolveTheme(pref || "auto");
+  document.documentElement.setAttribute("data-theme", resolved);
 }
 
-.input, textarea, input[type="text"]{
-  background: var(--color-bg);
-  color: var(--color-text);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  padding: .5rem .6rem;
-  width: 100%;
-}
-.input.code{ font-family: var(--font-mono); }
-
-/* Updated button colors to use theme vars */
-.btn{
-  background: var(--color-accent);
-  color: var(--btn-fg-accent);
-  border: 0;
-  border-radius: var(--radius);
-  padding: .45rem .75rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.btn:hover{ filter: brightness(1.08); }
-.btn:active{ transform: translateY(1px); }
-
-.btn.warn{
-  background: var(--color-warn);
-  color: var(--btn-fg-warn);
+function watchSystemThemeIfAuto(currentPrefGetter) {
+  if (!systemDarkQuery?.addEventListener) return;
+  systemDarkQuery.addEventListener("change", () => {
+    if (currentPrefGetter() === "auto") applyTheme("auto");
+  });
 }
 
-button.secondary{
-  background: transparent;
-  color: var(--color-accent);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius);
-  padding: .4rem .6rem;
-  cursor: pointer;
-}
-button.secondary:hover{
-  background: color-mix(in oklab, var(--color-accent) 12%, transparent);
+/* ------------------------------- Actions -------------------------------- */
+function getState() {
+  return loadState();
 }
 
-input[type="file"]{ color: var(--color-text); }
-
-/* Accessible focus ring (fallback below) */
-:focus-visible{
-  outline: 2px solid color-mix(in oklab, var(--color-accent) 70%, transparent);
-  outline-offset: 2px;
+function addHabit(name) {
+  const state = loadState();
+  const id = `h_${Math.random().toString(36).slice(2, 8)}`;
+  const habit = { id, name, icon: "🔥", targetDays: [0,1,2,3,4,5,6], strict: false, createdAt: Date.now() };
+  const habits = [...state.habits, habit];
+  saveState({ habits });
+  return habit;
 }
 
-/* Fallback for browsers without color-mix */
-@supports not (color: color-mix(in oklab, white, black)){
-  :focus-visible{ outline: 2px solid var(--color-accent); outline-offset: 2px; }
-}
-
-
-/* =============================================================================
-   UTILITIES
-   ========================================================================== */
-.mono { font-family: var(--font-mono); }
-.muted{ color: var(--color-muted); }
-.hidden { display: none !important; }
-
-.sr-only{
-  position: absolute; width:1px; height:1px; padding:0; margin:-1px;
-  overflow: hidden; clip: rect(0,0,0,0); border:0;
-}
-
-/* Skip to content link (appears when focused) */
-.skip-link{ position:absolute; left:-9999px; top:0; }
-.skip-link:focus{
-  left:1rem; top:1rem; background: var(--color-surface); color: var(--color-text);
-  padding:.5rem .75rem; border-radius: var(--radius); box-shadow: var(--shadow);
-  z-index:1000; text-decoration:none;
-}
-
-/* Reduced motion */
-@media (prefers-reduced-motion: reduce){
-  *{
-    animation-duration: .001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .001ms !important;
+function deleteHabit(id) {
+  const state = loadState();
+  const habits = state.habits.filter(h => h.id !== id);
+  const days = { ...state.days };
+  for (const d in days) {
+    if (days[d]?.habits && id in days[d].habits) {
+      const copy = { ...days[d].habits };
+      delete copy[id];
+      days[d] = { ...days[d], habits: copy };
+    }
   }
+  saveState({ habits, days });
 }
 
-
-/* =============================================================================
-   GENERIC COMPONENTS
-   ========================================================================== */
-/* Placeholder blocks */
-.placeholder { text-align: center; padding: 4rem 1rem; }
-.placeholder__title { margin-bottom: .5rem; font-size: 1.5rem; }
-.placeholder__text { color: var(--color-muted); }
-
-/* Footer */
-.site-footer small { font-size: .8rem; color: var(--color-muted); }
-
-/* List rows / chips used across views */
-.row{ display:flex; align-items:center; gap:.75rem; }
-.pill{ border:1px solid var(--hairline); padding:.2rem .5rem; border-radius:999px; font-size:.8rem; }
-
-/* Ensure textareas feel solid and don't jump in height */
-textarea.input{ min-height:10rem; resize:vertical; }
-
-/* Progress bar (Today) */
-.progress {
-  height: 10px;
-  background: var(--track);
-  border-radius: 999px;
-  overflow: hidden;
-  margin-top: .25rem;
-}
-.progress-bar {
-  height: 100%;
-  background: var(--color-accent);
-  transition: width .3s ease;
+function toggleHabitForToday(habitId, checked) {
+  const state = loadState();
+  const iso = todayISO();
+  const day = state.days[iso] || { habits: {}, ts: Date.now() };
+  day.habits = { ...(day.habits || {}), [habitId]: !!checked };
+  day.ts = Date.now();
+  const days = { ...state.days, [iso]: day };
+  saveState({ days });
+  return days[iso];
 }
 
-/* Quotes (Today) */
-.quote{
-  font-style: italic;
-  color: var(--color-muted);
-  border-left: 3px solid var(--color-accent);
-  padding-left: .75rem;
-  margin: .75rem 0 1rem 0;
+function setJournalForDate(isoDate, text) {
+  const state = loadState();
+  const day = state.days[isoDate] || { habits: {}, ts: Date.now() };
+  day.journal = text || "";
+  day.ts = Date.now();
+  const days = { ...state.days, [isoDate]: day };
+  saveState({ days });
+  return days[isoDate];
 }
 
-/* Generic tables (legacy History list; may keep for future) */
-.table{ width:100%; border-collapse:collapse; }
-.table th,.table td{
-  padding:.6rem .5rem; border-bottom:1px solid var(--hairline); vertical-align:top;
-}
-.table thead th{
-  color:var(--color-muted); font-weight:600; text-align:left; background: var(--track);
-}
-.table tr:hover td{
-  background: color-mix(in oklab, var(--color-text) 4%, transparent);
+function getJournalForDate(isoDate) {
+  const state = loadState();
+  return state.days?.[isoDate]?.journal || "";
 }
 
-/* Disabled look helper */
-button.is-disabled{ opacity:.55; cursor:not-allowed; }
-
-
-/* =============================================================================
-   HISTORY CALENDAR (COMPACT + RESPONSIVE)
-   ========================================================================== */
-/* New classes (use these in UI): history-card, history-dow, history-cal */
-.history-card h2 { margin-bottom: .35rem; }
-.history-dow { color: var(--color-muted); font-weight:600; text-align:center; margin-bottom: 6px; }
-.history-cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-
-/* Shorter (less tall) cells by default to reduce scrolling */
-.history-cal .cell { aspect-ratio: 5 / 4; }
-
-/* On large screens, go back to perfect squares */
-@media (min-width: 900px){
-  .history-cal .cell { aspect-ratio: 1 / 1; }
+function updateUser(patch = {}) {
+  const state = loadState();
+  const prevUser = state.user || {};
+  const next = { ...prevUser, ...patch };
+  saveState({ user: next });
+  if (Object.prototype.hasOwnProperty.call(patch, "theme")) {
+    applyTheme(next.theme);
+  }
+  return next;
 }
 
-/* Tighten on phones */
-@media (max-width: 640px){
-  .history-card { padding: 12px; }
-  .history-dow { font-size: .8rem; }
-  .history-cal { gap: 6px; }
-  .history-cal .pct { display: none; } /* hide tiny % to avoid wrapping */
+function clearWelcome() {
+  const state = loadState();
+  const meta = { ...(state.meta || {}), welcome: false };
+  saveState({ meta });
+  return meta;
 }
 
-/* Backwards-compat: if UI still uses .dowstrip/.calendar, inherit these too */
-.dowstrip { color: var(--color-muted); font-weight:600; text-align:center; }
-.calendar  { display: grid; grid-template-columns: repeat(7,1fr); gap: 8px; }
-
-/* Day cell visuals (shared) — includes sizing/visibility fix */
-.cell{
-  width: 100%;                          /* ensure definite inline size for aspect-ratio */
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-  background: var(--track);             /* theme-aware (works in light mode) */
-  position: relative;
-  overflow: hidden;
-}
-.cell .date{ position:absolute; top:6px; left:8px; font-size:.8rem; color:var(--color-muted); }
-.cell .fill{ position:absolute; inset:auto 0 0 0; height:0; background:linear-gradient(to top, var(--color-accent), transparent); opacity:.55; }
-.cell .pct{ position:absolute; bottom:6px; right:8px; font-size:.75rem; opacity:.8; }
-.cell.today{ outline: 2px solid var(--color-accent); outline-offset: 2px; }
-.cell.empty{ background: transparent; border-style: dashed; opacity: .35; }
-
-/* Hover popover for snippet */
-.popover{
-  position: fixed;
-  z-index: 10;
-  min-width: 260px;
-  max-width: min(90vw, 360px);
-  background: var(--color-surface);
-  border: 1px solid var(--hairline);
-  border-radius: 12px;
-  box-shadow: 0 10px 30px rgba(0,0,0,.45);
-  padding: 12px;
-  display: none;
-}
-.popover h3{ margin: 0 0 6px; font-size: 1rem; }
-.popover .snippet{ margin-top: 6px; color: var(--color-muted); font-style: italic; }
-
-/* Full detail overlay */
-.overlay{
-  position: fixed;
-  inset: 0;
-  display: none;
-  place-items: center;
-  z-index: 20;
-  background: rgba(0,0,0,.35);
-  backdrop-filter: saturate(120%) blur(2px);
-}
-.detail{
-  width: min(720px, 92vw);
-  max-height: 88vh;
-  overflow: auto;
-  background: var(--color-surface);
-  border: 1px solid var(--hairline);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0,0,0,.55);
-  padding: 16px 18px;
-  opacity: 0;
-  transform: scale(.96);
-  transition: opacity .18s ease, transform .18s ease;
-}
-.overlay.show{ display: grid; }
-.overlay.show .detail{ opacity: 1; transform: scale(1); }
-
-/* Chips inside overlay */
-.chips{ display:flex; gap:.5rem; flex-wrap:wrap; }
-.chip{
-  border: 1px solid var(--hairline);
-  border-radius: 999px;
-  padding: .2rem .55rem;
-  font-size: .85rem;
-  color: var(--color-muted);
-}
-.grid-two{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width:640px){ .grid-two{ grid-template-columns: 1fr; } }
-.journal{ margin-top: .5rem; white-space: pre-wrap; }
-
-/* NEW: place the Close button in the top-right of the overlay card */
-.detail header { position: relative; }
-#detail-close{
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  padding: .25rem .5rem;
-  line-height: 1;
-  border-radius: 8px;
+/* -------- Backup / Restore -------- */
+function exportToFile() {
+  const state = loadState();
+  const snap = buildSnapshot(state);
+  downloadSnapshot(snap);
 }
 
-.quote .quote__author{
-  display:block;
-  margin-top:.35rem;
-  opacity:.8;
-  font-style:normal;    /* author not italic */
+function getSaveKey() {
+  const state = loadState();
+  const snap = buildSnapshot(state);
+  return encodeSaveKey(snap);
 }
 
-/* Clickable habits: make it obvious */
-input[type="checkbox"],
-label.row,
-.row input[type="checkbox"] {
-  cursor: pointer;
+async function importFromFile(file) {
+  const state = loadState();
+  const snap = await readSnapshotFile(file);
+  applySnapshotReplaceAll(snap, {
+    setUser: (u) => (state.user = u),
+    setHabits: (h) => (state.habits = h),
+    setDays: (d) => (state.days = d),
+    setMeta: (m) => (state.meta = m),
+    setVersion: (v) => (state.version = v),
+  });
+  saveState(state);
+  applyTheme(state.user?.theme || "auto");
+  location.hash = "#/today";
 }
 
-/* Avoid accidental text highlight while tapping rows */
-label.row { user-select: none; }
-
-/* Keep vertical scrollbar space reserved so the page doesn't "jump" */
-html { scrollbar-gutter: stable both-edges; }
-
-/* === Mobile header/nav hardening === */
-.site-header .wrap { flex-wrap: wrap; gap: .5rem .75rem; } /* allow wrapping */
-.brand { flex: 1 1 auto; min-width: 0; }                   /* don't force overflow */
-.nav__list { flex-wrap: wrap; }                            /* let nav wrap to next line */
-.nav__link { white-space: nowrap; }                        /* avoid broken labels */
-
-@media (max-width: 420px){
-  .site-nav { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .site-nav::-webkit-scrollbar { height: 6px; }
+function importFromKey(keyStr) {
+  const state = loadState();
+  const snap = readSnapshotFromKey(keyStr);
+  applySnapshotReplaceAll(snap, {
+    setUser: (u) => (state.user = u),
+    setHabits: (h) => (state.habits = h),
+    setDays: (d) => (state.days = d),
+    setMeta: (m) => (state.meta = m),
+    setVersion: (v) => (state.version = v),
+  });
+  saveState(state);
+  applyTheme(state.user?.theme || "auto");
+  location.hash = "#/today";
 }
-/* Safety: header should not create side-scroll */
-.site-header { overflow: hidden; }
 
-/* Ensure focus ring doesn't shift layout on checkboxes */
-input[type="checkbox"]:focus { border: none; }
+/* ------------------------------- Router --------------------------------- */
+const routes = {
+  today: renderToday,
+  history: renderHistory,
+  habits: renderHabits,
+  journal: renderJournal,
+  settings: renderSettings,
+};
+
+function render(route) {
+  const state = loadState();
+  const root = qs("#app-root");
+  if (!root) return;
+
+  const sameRoute = route === LAST_ROUTE;
+  const prevY = sameRoute ? window.scrollY : 0;
+
+  setBusy(true);
+  root.innerHTML = "";
+  const fn = routes[route] || routes.today;
+  const frag = fn(state);
+  root.appendChild(frag);
+  setBusy(false);
+  setActiveNav(route);
+
+  if (sameRoute) {
+    window.scrollTo(0, prevY);
+  } else {
+    window.scrollTo(0, 0);
+  }
+  LAST_ROUTE = route;
+}
+
+/* ------------------------------- Migrate -------------------------------- */
+function migrateIfNeeded(state) {
+  return state;
+}
+
+/* -------------------------------- Init ---------------------------------- */
+function init() {
+  ensureInitialized();
+  let state = loadState();
+  state = migrateIfNeeded(state);
+
+  runOnboardingIfNeeded(() => loadState(), partial => saveState(partial));
+  
+  applyTheme(state.user?.theme || "auto");
+  watchSystemThemeIfAuto(() => loadState().user?.theme || "auto");
+
+  attachController({
+    getState,
+    addHabit,
+    deleteHabit,
+    toggleHabitForToday,
+    exportToFile,
+    getSaveKey,
+    importFromFile,
+    importFromKey,
+    setJournalForDate,
+    getJournalForDate,
+    updateUser,
+    clearWelcome,
+  });
+
+  const meta = { ...state.meta, lastOpenDate: Date.now() };
+  saveState({ meta });
+
+  setVersionBadge();
+  render(getRoute());
+
+  window.addEventListener("hashchange", () => render(getRoute()));
+  window.addEventListener("keydown", (e) => {
+    if (!e.altKey) return;
+    const map = { "1": "today", "2": "history", "3": "habits", "4": "journal", "5": "settings" };
+    const next = map[e.key];
+    if (next) {
+      location.hash = `#/${next}`;
+      e.preventDefault();
+    }
+  });
+}
+
+document.addEventListener("DOMContentLoaded", init);
