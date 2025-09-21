@@ -65,17 +65,23 @@ export function renderToday(state) {
       h("div", { class: "progress-bar", style: `width:${pct}%;` })
     )
   );
+// Quote of the day (same quote per day)
+const quoteEl = h("blockquote", { class: "quote" },
+  h("span", { class: "quote__text", text: "" }),
+  h("footer", { class: "quote__author", text: "" })
+);
 
-  // Quote of the day (same quote per day)
-  const quoteEl = h("blockquote", { class: "quote" }, "");
-  loadQuotes()
-    .then(quotes => {
-      if (!quotes || !quotes.length) return;
-      const idx = Math.floor((Date.now() / 86400000) % quotes.length);
-      const q = quotes[idx];
-      quoteEl.textContent = typeof q === "string" ? q : (q?.text ?? "");
-    })
-    .catch(() => { /* ignore */ });
+loadQuotes()
+  .then(quotes => {
+    if (!quotes || !quotes.length) return;
+    const idx = Math.floor((Date.now() / 86400000) % quotes.length);
+    const q = quotes[idx];
+    const text = typeof q === "string" ? q : (q?.text ?? "");
+    const author = typeof q === "object" ? (q.author || "") : "";
+    quoteEl.querySelector(".quote__text").textContent = text;
+    quoteEl.querySelector(".quote__author").textContent = author ? `— ${author}` : "";
+  })
+  .catch(() => {});
 
   const list = h("div");
   if (total === 0) {
