@@ -1,5 +1,5 @@
 // app.js
-// v0.2 — bootstrap, storage, hash-router, with backup/export actions
+// v0.3 — bootstrap, storage, hash-router, backup/export, theme support
 
 import {
   renderToday,
@@ -115,6 +115,27 @@ function setActiveNav(route) {
   });
 }
 
+/* ------------------------------ Theme ----------------------------------- */
+const systemDarkQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+
+function resolveTheme(pref) {
+  if (pref === "dark" || pref === "light") return pref;
+  return systemDarkQuery?.matches ? "dark" : "light"; // auto
+}
+
+function applyTheme(pref) {
+  const resolved = resolveTheme(pref || "auto");
+  document.documentElement.setAttribute("data-theme", resolved);
+}
+
+function watchSystemThemeIfAuto(currentPrefGetter) {
+  // Update only when user preference is "auto"
+  if (!systemDarkQuery?.addEventListener) return;
+  systemDarkQuery.addEventListener("change", () => {
+    if (currentPrefGetter() === "auto") applyTheme("auto");
+  });
+}
+
 /* ------------------------------- Actions -------------------------------- */
 function getState() {
   return loadState();
@@ -169,6 +190,14 @@ function getJournalForDate(isoDate) {
   return state.days?.[isoDate]?.journal || "";
 }
 
+// Update user prefs (e.g., theme)
+function updateUser(patch) {
+  const state = loadState();
+  const next = { ...state.user, ...patch };
+  saveState({ user: next });
+  if ("theme" in patch) applyTheme(next.theme);
+  return next;
+}
 
 /* -------- Backup / Restore -------- */
 function exportToFile() {
@@ -194,6 +223,7 @@ async function importFromFile(file) {
     setVersion: (v) => (state.version = v),
   });
   saveState(state);
+  applyTheme(state.user?.theme || "auto"); // ensure theme matches imported pref
   location.hash = "#/today";
 }
 
@@ -208,6 +238,7 @@ function importFromKey(keyStr) {
     setVersion: (v) => (state.version = v),
   });
   saveState(state);
+  applyTheme(state.user?.theme || "auto");
   location.hash = "#/today";
 }
 
@@ -244,6 +275,10 @@ function init() {
   let state = loadState();
   state = migrateIfNeeded(state);
 
+  // Apply theme on boot and watch system for Auto
+  applyTheme(state.user?.theme || "auto");
+  watchSystemThemeIfAuto(() => loadState().user?.theme || "auto");
+
   // expose controller to views
   attachController({
     getState,
@@ -256,7 +291,7 @@ function init() {
     importFromKey,
     setJournalForDate,
     getJournalForDate,
-
+    updateUser, // <-- for Settings theme dropdown
   });
 
   const meta = { ...state.meta, lastOpenDate: Date.now() };
@@ -278,3 +313,4 @@ function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+ 
