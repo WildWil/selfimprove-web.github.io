@@ -1,5 +1,5 @@
 // app.js
-// v0.1 — add export/import (Replace-All)
+// v0.1 — bootstrap, storage, hash-router, minimal actions
 
 import {
   renderToday,
@@ -11,16 +11,112 @@ import {
 } from "./ui.js";
 
 import { todayISO } from "./streaks.js";
-import { buildSnapshot, downloadSnapshot } from "./export.js";
-import { readSnapshotFile, applySnapshotReplaceAll } from "./import.js";
 
-/* ...constants, DEFAULTS, storage, ensureInitialized, loadState, saveState stay unchanged... */
+/* ----------------------------- Constants -------------------------------- */
+const APP_VERSION = "0.1.0";
+const NS = "selftrack";
+const KEYS = {
+  user: `${NS}:user`,
+  habits: `${NS}:habits`,
+  days: `${NS}:days`,
+  meta: `${NS}:meta`,
+  version: `${NS}:version`,
+};
 
-function setVersion(v) { localStorage.setItem(KEYS.version, JSON.stringify(v)); }
+const DEFAULTS = Object.freeze({
+  user: {
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    theme: "auto", // auto | dark | light
+    startOfWeek: 1, // 0=Sun, 1=Mon
+  },
+  habits: [],
+  days: {},
+  meta: {
+    installDate: Date.now(),
+    lastOpenDate: null,
+    streaksByHabit: {},
+  },
+});
+
+/* ------------------------------ Storage --------------------------------- */
+const storage = {
+  get(key, fallback = null) {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  set(key, value) {
+    localStorage.setItem(key, JSON.stringify(value));
+  },
+  has(key) {
+    return localStorage.getItem(key) !== null;
+  },
+};
+
+function ensureInitialized() {
+  if (!storage.has(KEYS.version)) storage.set(KEYS.version, APP_VERSION);
+  if (!storage.has(KEYS.user)) storage.set(KEYS.user, DEFAULTS.user);
+  if (!storage.has(KEYS.habits)) storage.set(KEYS.habits, DEFAULTS.habits);
+  if (!storage.has(KEYS.days)) storage.set(KEYS.days, DEFAULTS.days);
+  if (!storage.has(KEYS.meta)) storage.set(KEYS.meta, DEFAULTS.meta);
+}
+
+function loadState() {
+  return {
+    user: storage.get(KEYS.user, DEFAULTS.user),
+    habits: storage.get(KEYS.habits, DEFAULTS.habits),
+    days: storage.get(KEYS.days, DEFAULTS.days),
+    meta: storage.get(KEYS.meta, DEFAULTS.meta),
+    version: storage.get(KEYS.version, APP_VERSION),
+  };
+}
+
+function saveState(partial) {
+  if (partial.user) storage.set(KEYS.user, partial.user);
+  if (partial.habits) storage.set(KEYS.habits, partial.habits);
+  if (partial.days) storage.set(KEYS.days, partial.days);
+  if (partial.meta) storage.set(KEYS.meta, partial.meta);
+}
+
+/* ------------------------------ Utilities ------------------------------- */
+const qs = (sel, el = document) => el.querySelector(sel);
+const qsa = (sel, el = document) => [...el.querySelectorAll(sel)];
+
+function setBusy(isBusy) {
+  const root = qs("#app-root");
+  if (!root) return;
+  root.setAttribute("aria-busy", String(isBusy));
+}
+
+function setVersionBadge() {
+  const el = qs("#app-version");
+  if (el) el.textContent = `v${APP_VERSION}`;
+}
+
+function getRoute() {
+  const hash = (location.hash || "#/today").toLowerCase();
+  const route = hash.replace(/^#\//, "");
+  const valid = new Set(["today", "history", "habits", "journal", "settings"]);
+  return valid.has(route) ? route : "today";
+}
+
+function setActiveNav(route) {
+  qsa('[data-route]').forEach(a => {
+    if (a.getAttribute("data-route") === route) {
+      a.setAttribute("aria-current", "page");
+    } else {
+      a.removeAttribute("aria-current");
+    }
+  });
+}
 
 /* ------------------------------- Actions -------------------------------- */
-// existing actions...
-function getState() { return loadState(); }
+function getState() {
+  return loadState();
+}
 
 function addHabit(name) {
   const state = loadState();
@@ -34,6 +130,7 @@ function addHabit(name) {
 function deleteHabit(id) {
   const state = loadState();
   const habits = state.habits.filter(h => h.id !== id);
+  // Also remove checks for that habit from all days
   const days = { ...state.days };
   for (const d in days) {
     if (days[d]?.habits && id in days[d].habits) {
@@ -56,70 +153,69 @@ function toggleHabitForToday(habitId, checked) {
   return days[iso];
 }
 
-/* -------- Export / Import -------- */
-function exportNow() {
-  const state = loadState();
-  const snapshot = buildSnapshot(state);
-  downloadSnapshot(snapshot);
-}
-
-async function importReplaceAll(file) {
-  const snapshot = await readSnapshotFile(file);
-  applySnapshotReplaceAll(snapshot, {
-    setUser: (v) => storage.set(KEYS.user, v),
-    setHabits: (v) => storage.set(KEYS.habits, v),
-    setDays: (v) => storage.set(KEYS.days, v),
-    setMeta: (v) => storage.set(KEYS.meta, v),
-    setVersion: (v) => setVersion(v),
-  });
-  // re-render current route after import
-  render(getRoute());
-  return true;
-}
-
 /* ------------------------------- Router --------------------------------- */
-const routes = { today: renderToday, history: renderHistory, habits: renderHabits, journal: renderJournal, settings: renderSettings };
+const routes = {
+  today: renderToday,
+  history: renderHistory,
+  habits: renderHabits,
+  journal: renderJournal,
+  settings: renderSettings,
+};
 
 function render(route) {
   const state = loadState();
-  const root = document.querySelector("#app-root");
+  const root = qs("#app-root");
   if (!root) return;
-  root.setAttribute("aria-busy", "true");
+  setBusy(true);
   root.innerHTML = "";
   const fn = routes[route] || routes.today;
   const frag = fn(state);
   root.appendChild(frag);
-  root.setAttribute("aria-busy", "false");
-  document.querySelectorAll('[data-route]').forEach(a => {
-    a.getAttribute("data-route") === route ? a.setAttribute("aria-current","page") : a.removeAttribute("aria-current");
-  });
+  setBusy(false);
+  setActiveNav(route);
 }
 
-/* ------------------------------- Init ----------------------------------- */
+/* ------------------------------- Migrate -------------------------------- */
+function migrateIfNeeded(state) {
+  // Placeholder for future schema migrations
+  return state;
+}
+
+/* -------------------------------- Init ---------------------------------- */
 function init() {
   ensureInitialized();
   let state = loadState();
+  state = migrateIfNeeded(state);
 
+  // expose controller to views
   attachController({
     getState,
     addHabit,
     deleteHabit,
     toggleHabitForToday,
-    exportNow,
-    importReplaceAll,
   });
 
+  // update meta.lastOpenDate
   const meta = { ...state.meta, lastOpenDate: Date.now() };
   saveState({ meta });
 
-  const el = document.querySelector("#app-version"); if (el) el.textContent = `v${storage.get(KEYS.version, APP_VERSION)}`;
+  setVersionBadge();
 
+  // initial render
   render(getRoute());
+
+  // route changes
   window.addEventListener("hashchange", () => render(getRoute()));
+
+  // keyboard nav
   window.addEventListener("keydown", (e) => {
     if (!e.altKey) return;
-    const map = { "1":"today","2":"history","3":"habits","4":"journal","5":"settings" };
-    const next = map[e.key]; if (next) { location.hash = `#/${next}`; e.preventDefault(); }
+    const map = { "1": "today", "2": "history", "3": "habits", "4": "journal", "5": "settings" };
+    const next = map[e.key];
+    if (next) {
+      location.hash = `#/${next}`;
+      e.preventDefault();
+    }
   });
 }
 
