@@ -279,4 +279,14 @@ textarea.input{min-height:10rem;resize:vertical}
   text-decoration:none;
 }
 
+/* Simple table for History */
+.table{width:100%;border-collapse:collapse}
+.table th,.table td{padding:.6rem .5rem;border-bottom:1px solid rgba(255,255,255,.08);vertical-align:top}
+.table thead th{color:var(--color-muted);font-weight:600;text-align:left;background:rgba(255,255,255,.02)}
+.table tr:hover td{background:rgba(255,255,255,.03)}
+
+/* disabled look for Next 7 when already at current week */
+button.is-disabled{opacity:.55;cursor:not-allowed}
+
+
 
