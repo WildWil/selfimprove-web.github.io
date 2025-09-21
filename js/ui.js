@@ -110,7 +110,71 @@ export function renderHabits(state) {
 /* ------------------------------ JOURNAL --------------------------------- */
 export function renderJournal(state) {
   const wrap = h("div", { class: "wrap" });
-  wrap.append(card("Journal", h("p", { class: "placeholder__text" }, "Full journal entries and search will go here.")));
+
+  // helpers to move by days
+  const toISO = (d) => d.toISOString().slice(0,10);
+  const fromISO = (s) => new Date(s + "T12:00:00"); // safe local noon
+
+  let iso = todayISO();
+
+  const dateLabel = h("div", { class: "mono", style: "opacity:.8;margin-bottom:.5rem;" }, iso);
+
+  const ta = h("textarea", {
+    class: "input",
+    rows: 10,
+    placeholder: "Write your thoughts for today…",
+    value: CTRL?.getJournalForDate(iso) || ""
+  });
+
+  const counter = h("div", {
+    class: "mono",
+    style: "opacity:.6;font-size:.9rem;margin-top:.25rem;"
+  }, `${(ta.value || "").length} chars`);
+
+  // debounce autosave
+  let t = null;
+  ta.addEventListener("input", () => {
+    counter.textContent = `${ta.value.length} chars`;
+    clearTimeout(t);
+    t = setTimeout(() => {
+      CTRL?.setJournalForDate(iso, ta.value);
+    }, 300);
+  });
+
+  // day nav
+  const prevBtn = h("button", { class: "secondary", type: "button" }, "← Prev");
+  const nextBtn = h("button", { class: "secondary", type: "button" }, "Next →");
+
+  function loadDay(newISO) {
+    iso = newISO;
+    dateLabel.textContent = iso;
+    ta.value = CTRL?.getJournalForDate(iso) || "";
+    counter.textContent = `${ta.value.length} chars`;
+  }
+
+  prevBtn.addEventListener("click", () => {
+    const d = fromISO(iso); d.setDate(d.getDate() - 1);
+    loadDay(toISO(d));
+  });
+  nextBtn.addEventListener("click", () => {
+    const d = fromISO(iso); d.setDate(d.getDate() + 1);
+    loadDay(toISO(d));
+  });
+
+  const controls = h("div", { style: "display:flex;gap:.5rem;margin:.5rem 0 1rem 0;" }, prevBtn, nextBtn);
+
+  wrap.append(
+    card("Journal",
+      dateLabel,
+      controls,
+      ta,
+      counter,
+      h("p", { class: "muted", style: "opacity:.7;margin-top:.75rem;" },
+        "Autosaves after you pause typing. Use ←/→ buttons to switch days."
+      )
+    )
+  );
+
   return wrap;
 }
 
