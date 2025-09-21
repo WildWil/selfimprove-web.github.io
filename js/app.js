@@ -192,20 +192,32 @@ function getJournalForDate(isoDate) {
   return state.days?.[isoDate]?.journal || "";
 }
 
-function updateUser(patch) {
+// Replace BOTH existing updateUser() definitions with this one:
+function updateUser(patch = {}) {
   const state = loadState();
-  const next = { ...state.user, ...patch };
+  const prevUser = state.user || {};
+  const next = { ...prevUser, ...patch };
+
   saveState({ user: next });
-  if ("theme" in patch) applyTheme(next.theme);
+
+  // Apply theme immediately if it was part of the update
+  if (Object.prototype.hasOwnProperty.call(patch, "theme")) {
+    if (typeof applyTheme === "function") {
+      applyTheme(next.theme);
+    } else {
+      // Fallback in case applyTheme isn't defined/imported:
+      const html = document.documentElement;
+      if (next.theme === "auto") {
+        html.removeAttribute("data-theme");
+      } else {
+        html.setAttribute("data-theme", next.theme);
+      }
+    }
+  }
+
   return next;
 }
 
-function updateUser(partialUser) {
-  const state = loadState();
-  const user = { ...(state.user || {}), ...(partialUser || {}) };
-  saveState({ user });
-  return user;
-}
 
 function clearWelcome() {
   const state = loadState();
