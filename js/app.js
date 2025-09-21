@@ -290,6 +290,9 @@ function init() {
   let state = loadState();
   state = migrateIfNeeded(state);
 
+  // Run onboarding if needed (seeds starter habits once)
+  runOnboardingIfNeeded(() => loadState(), partial => saveState(partial));
+  
   // Apply theme on boot and watch system for Auto
   applyTheme(state.user?.theme || "auto");
   watchSystemThemeIfAuto(() => loadState().user?.theme || "auto");
