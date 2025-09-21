@@ -87,37 +87,186 @@ export function renderToday(state) {
 
 
 /* ------------------------------ HISTORY --------------------------------- */
+/* ------------------------------ HISTORY (Calendar + Overlay) ------------- */
 export function renderHistory(state){
   const wrap = h("div", { class: "wrap" });
 
-  // helpers
-  const dayISO = (d) => d.toISOString().slice(0,10);
-  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
-  const fmtDate = (iso) => {
-    const d = new Date(iso + "T12:00:00");
-    return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  // ---------- local helpers ----------
+  const ymd = (d) => d.toISOString().slice(0,10);
+  const firstOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1);
+  const startOfCalendar = (date) => {
+    const f = firstOfMonth(date);
+    const s = new Date(f);
+    s.setDate(f.getDate() - f.getDay()); // back to Sun
+    return s;
+  };
+  const endOfCalendar = (date) => {
+    const f = firstOfMonth(date);
+    const e = new Date(f.getFullYear(), f.getMonth()+1, 0); // last of month
+    const pad = 6 - e.getDay();
+    const ret = new Date(e);
+    ret.setDate(e.getDate()+pad); // forward to Sat
+    return ret;
+  };
+  const pctFor = (iso) => {
+    const total = state.habits.length;
+    const day = state.days[iso] || { habits:{} };
+    const done = Object.values(day.habits || {}).filter(Boolean).length;
+    return total ? Math.round((done/total)*100) : 0;
   };
 
-  // week navigation (0 = this week; -1 = previous week, etc.)
-  let weekOffset = 0;
+  // ---------- UI skeleton ----------
+  let monthOffset = 0; // 0=current, -1=prev, +1=next
 
-  const rangeLabel = h("div", { class: "mono", style: "opacity:.8;margin-bottom:.5rem;" }, "");
-  const prevBtn = h("button", { class: "secondary", type: "button" }, "← Prev 7");
-  const nextBtn = h("button", { class: "secondary", type: "button" }, "Next 7 →");
+  const label = h("div", { class: "mono", style: "text-align:center;flex:1;" });
+  const prevBtn = h("button", { class: "secondary", type: "button", onclick: () => { monthOffset--; renderMonth(); } }, "← Prev Month");
+  const nextBtn = h("button", { class: "secondary", type: "button", onclick: () => { monthOffset++; renderMonth(); } }, "Next Month →");
+  const controls = h("div", { style: "display:flex;gap:.5rem;align-items:center;margin:.5rem 0 1rem 0;" }, prevBtn, label, nextBtn);
 
-  const controls = h("div", { style:"display:flex;gap:.5rem;margin:.5rem 0 1rem 0;" }, prevBtn, nextBtn);
-
-  // table shell
-  const table = h("table", { class: "table" },
-    h("thead", {},
-      h("tr", {},
-        h("th", { text: "Date" }),
-        h("th", { text: "Completed" }),
-        h("th", { text: "Journal" }),
-      )
-    ),
-    h("tbody")
+  // days-of-week strip
+  const dow = h("div", { class: "dowstrip", style: "display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:6px" },
+    h("div", { text: "Sun" }), h("div", { text: "Mon" }), h("div", { text: "Tue" }),
+    h("div", { text: "Wed" }), h("div", { text: "Thu" }), h("div", { text: "Fri" }), h("div", { text: "Sat" })
   );
+
+  const cal = h("div", { class: "calendar" });
+  const popover = h("div", { class: "popover" }); // positioned fixed via CSS
+  const overlay = h("div", { class: "overlay", role: "dialog", "aria-modal": "true", "aria-hidden": "true" },
+    h("article", { class: "detail", "aria-labelledby": "detail-title" },
+      h("header", {},
+        h("div", {},
+          h("h2", { id: "detail-title", style: "margin:0 0 2px 0;font-size:1.15rem", text: "Day Details" }),
+          h("div", { id: "detail-sub", class: "muted", text: "—" })
+        ),
+        h("div", { id: "detail-chips", class: "chips" }),
+        h("button", { id: "detail-close", class: "secondary", type: "button", "aria-label": "Close" }, "Close ✕")
+      ),
+      h("section", { class: "grid-two" },
+        h("div", {},
+          h("h3", { style: "margin:.25rem 0 .35rem 0;font-size:1rem", text: "Habits" }),
+          h("div", { id: "detail-habits" })
+        ),
+        h("div", {},
+          h("h3", { style: "margin:.25rem 0 .35rem 0;font-size:1rem", text: "Summary" }),
+          h("div", { id: "detail-summary", class: "muted" })
+        ),
+      ),
+      h("section", { style: "margin-top:.5rem" },
+        h("h3", { style: "margin:.5rem 0 .35rem 0;font-size:1rem", text: "Journal" }),
+        h("div", { id: "detail-journal", class: "journal" })
+      )
+    )
+  );
+
+  const cardEl = card("History — Calendar", controls, dow, cal, popover);
+  wrap.append(cardEl, overlay);
+
+  // ---------- behavior ----------
+  function renderMonth(){
+    const base = new Date();
+    base.setMonth(base.getMonth() + monthOffset);
+    base.setDate(1);
+    label.textContent = base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+    cal.innerHTML = "";
+    const start = startOfCalendar(base);
+    const end = endOfCalendar(base);
+    const todayIso = ymd(new Date());
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
+      const iso = ymd(d);
+      const inMonth = (d.getMonth() === base.getMonth());
+      const p = pctFor(iso);
+
+      const cell = h("div", { class: "cell" + (inMonth ? "" : " empty") + (iso === todayIso ? " today" : "") });
+      const fill = h("div", { class: "fill", style: `height:${p}%;` });
+      const date = h("div", { class: "date", text: String(d.getDate()) });
+      const pct = h("div", { class: "pct", text: p ? `${p}%` : "" });
+      cell.append(fill, date, pct);
+
+      // hover popover
+      cell.addEventListener("mouseenter", (e) => showPopover(e.clientX, e.clientY, iso));
+      cell.addEventListener("mouseleave", hidePopover);
+
+      // click overlay
+      cell.addEventListener("click", () => openDetail(iso));
+
+      cal.appendChild(cell);
+    }
+  }
+
+  function showPopover(x, y, iso){
+    const d = new Date(iso + "T12:00:00");
+    const p = pctFor(iso);
+    const j = state.days[iso]?.journal || "";
+    popover.innerHTML = "";
+    popover.append(
+      h("h3", { text: d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) }),
+      h("div", { class: "muted", text: `Completed: ${p}%` }),
+      j ? h("div", { class: "snippet", text: j.length > 140 ? j.slice(0,140) + "…" : j }) : null
+    );
+    popover.style.display = "block";
+    const pad = 10;
+    popover.style.position = "fixed";
+    popover.style.left = (x + pad) + "px";
+    popover.style.top  = (y + pad) + "px";
+  }
+  function hidePopover(){ popover.style.display = "none"; }
+
+  function chip(text){ const c = h("div", { class: "chip", text }); return c; }
+
+  function openDetail(iso){
+    hidePopover();
+    const d = new Date(iso + "T12:00:00");
+    const p = pctFor(iso);
+    const j = state.days[iso]?.journal || "";
+    const doneMap = state.days[iso]?.habits || {};
+    const total = state.habits.length;
+    const done = Object.values(doneMap).filter(Boolean).length;
+
+    // header
+    wrap.querySelector("#detail-title").textContent = d.toLocaleDateString(undefined, { weekday:"long", month:"long", day:"numeric" });
+    wrap.querySelector("#detail-sub").textContent = `${iso} • Completed ${p}%`;
+
+    // chips
+    const chips = wrap.querySelector("#detail-chips"); chips.innerHTML = "";
+    chips.append(chip(`${done}/${total} habits`));
+    if (p === 100) chips.append(chip("Perfect day"));
+    else if (p >= 60) chips.append(chip("Solid progress"));
+
+    // habits list
+    const list = wrap.querySelector("#detail-habits"); list.innerHTML = "";
+    for (const hbt of state.habits){
+      const ok = !!doneMap[hbt.id];
+      const row = h("div", { class: "chip", text: (ok ? "✓ " : "○ ") + hbt.name });
+      row.style.display = "inline-block";
+      row.style.margin  = "0 .5rem .5rem 0";
+      list.append(row);
+    }
+
+    // summary + journal
+    wrap.querySelector("#detail-summary").textContent = p ? `You completed ${done} of ${total} habits.` : "No habits completed this day.";
+    wrap.querySelector("#detail-journal").textContent = j || "— No journal entry —";
+
+    overlay.classList.add("show");
+    overlay.setAttribute("aria-hidden", "false");
+    wrap.querySelector("#detail-close").focus();
+  }
+  function closeDetail(){
+    overlay.classList.remove("show");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+
+  // close handlers
+  wrap.querySelector("#detail-close").addEventListener("click", closeDetail);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) closeDetail(); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
+
+  // first render
+  renderMonth();
+  return wrap;
+}
+
 
   function renderWeek(){
     // compute the 7-day window based on weekOffset
