@@ -1,5 +1,5 @@
 // app.js
-// v0.1 — bootstrap, storage, hash-router, minimal actions
+// v0.2 — bootstrap, storage, hash-router, with backup/export actions
 
 import {
   renderToday,
@@ -11,6 +11,8 @@ import {
 } from "./ui.js";
 
 import { todayISO } from "./streaks.js";
+import { buildSnapshot, downloadSnapshot, encodeSaveKey } from "./export.js";
+import { readSnapshotFile, readSnapshotFromKey, applySnapshotReplaceAll } from "./import.js";
 
 /* ----------------------------- Constants -------------------------------- */
 const APP_VERSION = "0.1.0";
@@ -130,7 +132,6 @@ function addHabit(name) {
 function deleteHabit(id) {
   const state = loadState();
   const habits = state.habits.filter(h => h.id !== id);
-  // Also remove checks for that habit from all days
   const days = { ...state.days };
   for (const d in days) {
     if (days[d]?.habits && id in days[d].habits) {
@@ -151,6 +152,47 @@ function toggleHabitForToday(habitId, checked) {
   const days = { ...state.days, [iso]: day };
   saveState({ days });
   return days[iso];
+}
+
+/* -------- Backup / Restore -------- */
+function exportToFile() {
+  const state = loadState();
+  const snap = buildSnapshot(state);
+  downloadSnapshot(snap);
+}
+
+function getSaveKey() {
+  const state = loadState();
+  const snap = buildSnapshot(state);
+  return encodeSaveKey(snap);
+}
+
+async function importFromFile(file) {
+  const state = loadState();
+  const snap = await readSnapshotFile(file);
+  applySnapshotReplaceAll(snap, {
+    setUser: (u) => (state.user = u),
+    setHabits: (h) => (state.habits = h),
+    setDays: (d) => (state.days = d),
+    setMeta: (m) => (state.meta = m),
+    setVersion: (v) => (state.version = v),
+  });
+  saveState(state);
+  location.hash = "#/today";
+}
+
+function importFromKey(keyStr) {
+  const state = loadState();
+  const snap = readSnapshotFromKey(keyStr);
+  applySnapshotReplaceAll(snap, {
+    setUser: (u) => (state.user = u),
+    setHabits: (h) => (state.habits = h),
+    setDays: (d) => (state.days = d),
+    setMeta: (m) => (state.meta = m),
+    setVersion: (v) => (state.version = v),
+  });
+  saveState(state);
+  location.hash = "#/today";
 }
 
 /* ------------------------------- Router --------------------------------- */
@@ -177,7 +219,6 @@ function render(route) {
 
 /* ------------------------------- Migrate -------------------------------- */
 function migrateIfNeeded(state) {
-  // Placeholder for future schema migrations
   return state;
 }
 
@@ -193,21 +234,19 @@ function init() {
     addHabit,
     deleteHabit,
     toggleHabitForToday,
+    exportToFile,
+    getSaveKey,
+    importFromFile,
+    importFromKey,
   });
 
-  // update meta.lastOpenDate
   const meta = { ...state.meta, lastOpenDate: Date.now() };
   saveState({ meta });
 
   setVersionBadge();
-
-  // initial render
   render(getRoute());
 
-  // route changes
   window.addEventListener("hashchange", () => render(getRoute()));
-
-  // keyboard nav
   window.addEventListener("keydown", (e) => {
     if (!e.altKey) return;
     const map = { "1": "today", "2": "history", "3": "habits", "4": "journal", "5": "settings" };
