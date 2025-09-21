@@ -47,66 +47,65 @@ function card(title, ...body){
   return s;
 }
 
-/* ------------------------------ TODAY ----------------------------------- */
-export function renderToday(state) {
+// --- Today (with one-time Welcome banner) ---
+export function renderToday(state){
   const wrap = h("div", { class: "wrap" });
 
-// Optional welcome banner (shown once after onboarding)
-if (state.meta?.welcome) {
-  const dismiss = h("button", {
-    class: "secondary",
-    type: "button",
-    onClick: () => {
-      CTRL?.clearWelcome();
-      window.dispatchEvent(new Event("hashchange")); // re-render
-    }
-  }, "Got it ✕");
+  // One-time welcome banner (from onboarding.js sets meta.welcome = true)
+  if (state?.meta?.welcome) {
+    const dismissBtn = h("button", {
+      class: "secondary",
+      type: "button",
+      onClick: () => {
+        CTRL?.clearWelcome();
+        // re-render current route without scroll jump (app.js preserves scroll now)
+        window.dispatchEvent(new Event("hashchange"));
+      }
+    }, "Got it");
 
-  wrap.append(
-    (function(){
-      const s = h("section", { class: "card card--compact" });
-      s.append(
-        h("h2", { text: "Welcome 👋" }),
-        h("p", { class: "muted" }, "We added a few starter habits so you can see how things work. You can edit or delete them any time on the Habits tab."),
-        dismiss
-      );
-      return s;
-    })()
-  );
-}
+    const tip = h("p", {
+      class: "muted",
+      text: "Quick start: check off habits here on Today; add/edit habits in Habits; see your month in History; jot thoughts in Journal. You can switch Dark/Light in Settings."
+    });
 
+    const banner = card("Welcome 👋", tip, h("div", {}, dismissBtn));
+    banner.classList.add("card", "card--compact");
+    wrap.append(banner);
+  }
+
+  // Header (counts + progress)
+  const total = state.habits.length;
   const iso = todayISO();
   const day = state.days[iso] || { habits: {} };
-
-  const total = state.habits.length;
   const done = Object.values(day.habits || {}).filter(Boolean).length;
-  const pct = total ? Math.round((done / total) * 100) : 0;
+  const pct = total ? Math.round((done/total)*100) : 0;
 
-  const header = h("div", { style: "margin-bottom:1rem;" },
-    h("h2", { text: "Today" }),
-    h("p", { class: "muted" }, total ? `${done} of ${total} habits done` : "No habits yet"),
+  const header = h("div", {},
+    h("div", { class: "mono", text: total ? `${done} of ${total} habits done` : "No habits yet" }),
     h("div", { class: "progress" },
       h("div", { class: "progress-bar", style: `width:${pct}%;` })
     )
   );
-// Quote of the day (same quote per day)
-const quoteEl = h("blockquote", { class: "quote" },
-  h("span", { class: "quote__text", text: "" }),
-  h("footer", { class: "quote__author", text: "" })
-);
 
-loadQuotes()
-  .then(quotes => {
-    if (!quotes || !quotes.length) return;
-    const idx = Math.floor((Date.now() / 86400000) % quotes.length);
-    const q = quotes[idx];
-    const text = typeof q === "string" ? q : (q?.text ?? "");
-    const author = typeof q === "object" ? (q.author || "") : "";
-    quoteEl.querySelector(".quote__text").textContent = text;
-    quoteEl.querySelector(".quote__author").textContent = author ? `— ${author}` : "";
-  })
-  .catch(() => {});
+  // Quote of the day (stable per day)
+  const quoteEl = h("blockquote", { class: "quote" },
+    h("span", { class: "quote__text", text: "" }),
+    h("footer", { class: "quote__author", text: "" })
+  );
 
+  loadQuotes()
+    .then(quotes => {
+      if (!quotes || !quotes.length) return;
+      const idx = Math.floor((Date.now() / 86400000) % quotes.length);
+      const q = quotes[idx];
+      const text = typeof q === "string" ? q : (q?.text ?? "");
+      const author = typeof q === "object" ? (q.author || "") : "";
+      quoteEl.querySelector(".quote__text").textContent = text;
+      quoteEl.querySelector(".quote__author").textContent = author ? `— ${author}` : "";
+    })
+    .catch(() => {});
+
+  // Habits list
   const list = h("div");
   if (total === 0) {
     list.append(h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page."));
@@ -115,18 +114,23 @@ loadQuotes()
       const checked = !!day.habits[habit.id];
       const streak = currentStreak(habit.id, state.days);
 
-      const row = h("label", { class: "row", style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;" },
+      const row = h("label", {
+        class: "row",
+        style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;"
+      },
         h("input", {
           type: "checkbox",
           checked,
           onchange: (e) => {
             CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
+            // trigger a re-render of the same view (app.js keeps scroll stable)
             window.dispatchEvent(new Event("hashchange"));
           }
         }),
         h("span", { class: "mono", style: "flex:1;" }, habit.name),
         h("span", { class: "pill" }, `🔥 ${streak}`)
       );
+
       list.append(row);
     }
   }
