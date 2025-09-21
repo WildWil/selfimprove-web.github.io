@@ -306,7 +306,8 @@ function init() {
     importFromKey,
     setJournalForDate,
     getJournalForDate,
-    updateUser, // <-- for Settings theme dropdown
+    updateUser,
+    clearWelcome,
   });
 
   const meta = { ...state.meta, lastOpenDate: Date.now() };
