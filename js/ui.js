@@ -1,5 +1,5 @@
 // ui.js
-// v0.1 — add Settings UI for Export/Import
+// v0.1 — minimal usable UI for Today + Habits with persistence
 
 import { currentStreak, todayISO } from "./streaks.js";
 
@@ -22,47 +22,57 @@ function h(tag, attrs = {}, ...children) {
 }
 
 function card(title, ...body) {
-  return h("section", { class: "card" }, h("h2", { text: title }), ...body);
+  return h("section", { class: "card" },
+    h("h2", { text: title }),
+    ...body
+  );
 }
 
 /* ------------------------------ TODAY ----------------------------------- */
 export function renderToday(state) {
   const wrap = h("div", { class: "wrap" });
+
   const iso = todayISO();
   const day = state.days[iso] || { habits: {} };
 
   const list = h("div");
   if (state.habits.length === 0) {
-    list.append(h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page."));
+    list.append(
+      h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page.")
+    );
   } else {
     for (const habit of state.habits) {
       const checked = !!day.habits[habit.id];
       const streak = currentStreak(habit.id, state.days);
-      list.append(
-        h("label", { class: "row", style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;" },
-          h("input", {
-            type: "checkbox",
-            checked: checked ? "checked" : null,
-            onchange: (e) => {
-              CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
-              const ev = new Event("hashchange"); window.dispatchEvent(ev);
-            }
-          }),
-          h("span", { class: "mono", style: "flex:1;" }, habit.name),
-          h("span", { class: "pill", style: "border:1px solid rgba(255,255,255,.15);padding:.2rem .5rem;border-radius:999px;font-size:.8rem;" }, `🔥 ${streak}`)
-        )
+      const row = h("label", { class: "row", style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;" },
+        h("input", {
+          type: "checkbox",
+          checked: checked ? "checked" : null,
+          onchange: (e) => {
+            CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
+            // re-render Today quickly to update streak chips
+            location.hash = "#/today"; // stays on same route, triggers render via hashchange if changed; fallback manual:
+            const ev = new Event("hashchange"); window.dispatchEvent(ev);
+          }
+        }),
+        h("span", { class: "mono", style: "flex:1;" }, habit.name),
+        h("span", { class: "pill", style: "border:1px solid rgba(255,255,255,.15);padding:.2rem .5rem;border-radius:999px;font-size:.8rem;" }, `🔥 ${streak}`)
       );
+      list.append(row);
     }
   }
 
-  wrap.append(card("Today", list));
+  const section = card("Today", list);
+  wrap.append(section);
   return wrap;
 }
 
 /* ------------------------------ HISTORY --------------------------------- */
 export function renderHistory(state) {
   const wrap = h("div", { class: "wrap" });
-  wrap.append(card("History", h("p", { class: "placeholder__text" }, "Weekly calendar and summaries coming soon.")));
+  wrap.append(
+    card("History", h("p", { class: "placeholder__text" }, "Weekly calendar and summaries coming soon."))
+  );
   return wrap;
 }
 
@@ -79,6 +89,7 @@ export function renderHabits(state) {
     const name = (new FormData(form).get("name") || "").toString().trim();
     if (!name) return;
     CTRL?.addHabit(name);
+    location.hash = "#/habits";
     const ev = new Event("hashchange"); window.dispatchEvent(ev);
     (form.querySelector('[name="name"]')).value = "";
   });
@@ -88,21 +99,21 @@ export function renderHabits(state) {
     list.append(h("p", { class: "placeholder__text" }, "No habits yet."));
   } else {
     for (const habit of state.habits) {
-      list.append(
-        h("div", { class: "row", style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;" },
-          h("span", { class: "mono", style: "flex:1;" }, habit.name),
-          h("button", {
-            class: "secondary",
-            type: "button",
-            onclick: () => {
-              if (confirm(`Delete habit "${habit.name}"?`)) {
-                CTRL?.deleteHabit(habit.id);
-                const ev = new Event("hashchange"); window.dispatchEvent(ev);
-              }
+      const row = h("div", { class: "row", style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;" },
+        h("span", { class: "mono", style: "flex:1;" }, habit.name),
+        h("button", {
+          class: "secondary",
+          type: "button",
+          onclick: () => {
+            if (confirm(`Delete habit "${habit.name}"? This won't remove past checkmarks.`)) {
+              CTRL?.deleteHabit(habit.id);
+              location.hash = "#/habits";
+              const ev = new Event("hashchange"); window.dispatchEvent(ev);
             }
-          }, "Delete")
-        )
+          }
+        }, "Delete")
       );
+      list.append(row);
     }
   }
 
@@ -111,50 +122,20 @@ export function renderHabits(state) {
 }
 
 /* ------------------------------ JOURNAL --------------------------------- */
-export function renderJournal() {
+export function renderJournal(state) {
   const wrap = h("div", { class: "wrap" });
-  wrap.append(card("Journal", h("p", { class: "placeholder__text" }, "Full journal entries and search will go here.")));
+  wrap.append(
+    card("Journal", h("p", { class: "placeholder__text" }, "Full journal entries and search will go here."))
+  );
   return wrap;
 }
 
 /* ------------------------------ SETTINGS -------------------------------- */
 export function renderSettings(state) {
   const wrap = h("div", { class: "wrap" });
-
-  // Export
-  const exportBtn = h("button", { type: "button", onclick: () => CTRL?.exportNow() }, "Export Save Key");
-
-  // Import
-  const fileInput = h("input", { type: "file", accept: "application/json", style: "display:none" });
-  const importBtn = h("button", {
-    type: "button",
-    class: "secondary",
-    onclick: () => fileInput.click()
-  }, "Import (Replace All)");
-
-  fileInput.addEventListener("change", async () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    if (!confirm("Replace ALL current data with the imported save? This cannot be undone.")) {
-      fileInput.value = "";
-      return;
-    }
-    try {
-      await CTRL?.importReplaceAll(file);
-      alert("Import complete.");
-    } catch (err) {
-      alert(`Import failed: ${err.message}`);
-    } finally {
-      fileInput.value = "";
-    }
-  });
-
-  const actions = h("div", { class: "row", style: "display:flex;gap:.75rem;align-items:center;" }, exportBtn, importBtn, fileInput);
-
-  const info = h("p", { class: "placeholder__text" },
-    "Export creates a JSON file you can store anywhere. Import (Replace All) loads that file and overwrites current data."
+  const version = document.getElementById("app-version")?.textContent || "";
+  wrap.append(
+    card("Settings", h("p", { class: "placeholder__text" }, `Theme, start of week, and export/import coming soon. App ${version}.`))
   );
-
-  wrap.append(card("Backup & Restore", actions, info));
   return wrap;
 }
