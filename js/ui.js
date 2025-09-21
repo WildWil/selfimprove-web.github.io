@@ -1,4 +1,4 @@
-// ui.js — v0.7 clean (Today, History Calendar, Habits, Journal, Settings)
+// ui.js — v0.7.1 clean (Today, History Calendar, Habits, Journal, Settings)
 
 import { currentStreak, todayISO } from "./streaks.js";
 import { ymd, startOfCalendar, endOfCalendar } from "./calendar.js";
@@ -75,7 +75,7 @@ export function renderToday(state) {
       const q = quotes[idx];
       quoteEl.textContent = typeof q === "string" ? q : (q?.text ?? "");
     })
-    .catch(()=>{ /* silent */ });
+    .catch(() => { /* ignore */ });
 
   const list = h("div");
   if (total === 0) {
@@ -91,7 +91,6 @@ export function renderToday(state) {
           checked,
           onchange: (e) => {
             CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
-            // re-render today quickly
             window.dispatchEvent(new Event("hashchange"));
           }
         }),
@@ -142,6 +141,7 @@ export function renderHistory(state){
           h("div", { id: "detail-sub", class: "muted", text: "—" })
         ),
         h("div", { id: "detail-chips", class: "chips" }),
+        // text keeps it clear for a11y; CSS moves it to top-right
         h("button", { id: "detail-close", class: "secondary", type: "button", "aria-label": "Close" }, "Close ✕")
       ),
       h("section", { class: "grid-two" },
@@ -261,6 +261,10 @@ export function renderHistory(state){
   wrap.querySelector("#detail-close").addEventListener("click", closeDetail);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeDetail(); });
   window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
+
+  // extra polish: hide hover popover when scrolling/resizing (mobile)
+  window.addEventListener("scroll", hidePopover, { passive: true });
+  window.addEventListener("resize", hidePopover);
 
   renderMonth();
   return wrap;
