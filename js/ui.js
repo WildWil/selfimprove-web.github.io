@@ -47,44 +47,23 @@ function card(title, ...body){
   return s;
 }
 
-// --- Today (with one-time Welcome banner) ---
+// --- Today ---
 export function renderToday(state){
   const wrap = h("div", { class: "wrap" });
 
-  // One-time welcome banner (from onboarding.js sets meta.welcome = true)
-  if (state?.meta?.welcome) {
-    const dismissBtn = h("button", {
-      class: "secondary",
-      type: "button",
-      onClick: () => {
-        CTRL?.clearWelcome();
-        // re-render current route without scroll jump (app.js preserves scroll now)
-        window.dispatchEvent(new Event("hashchange"));
-      }
-    }, "Got it");
-
-    const tip = h("p", {
-      class: "muted",
-      text: "Quick start: check off habits here on Today; add/edit habits in Habits; see your month in History; jot thoughts in Journal. You can switch Dark/Light in Settings."
-    });
-
-    const banner = card("Welcome 👋", tip, h("div", {}, dismissBtn));
-    banner.classList.add("card", "card--compact");
-    wrap.append(banner);
-  }
-
-  // Header (counts + progress)
+  // Header (counts + progress) — keep refs for in-place updates
   const total = state.habits.length;
   const iso = todayISO();
   const day = state.days[iso] || { habits: {} };
   const done = Object.values(day.habits || {}).filter(Boolean).length;
   const pct = total ? Math.round((done/total)*100) : 0;
 
+  const countEl = h("div", { class: "mono", text: total ? `${done} of ${total} habits done` : "No habits yet" });
+  const barInner = h("div", { class: "progress-bar", style: `width:${pct}%;` });
+
   const header = h("div", {},
-    h("div", { class: "mono", text: total ? `${done} of ${total} habits done` : "No habits yet" }),
-    h("div", { class: "progress" },
-      h("div", { class: "progress-bar", style: `width:${pct}%;` })
-    )
+    countEl,
+    h("div", { class: "progress" }, barInner)
   );
 
   // Quote of the day (stable per day)
@@ -114,6 +93,8 @@ export function renderToday(state){
       const checked = !!day.habits[habit.id];
       const streak = currentStreak(habit.id, state.days);
 
+      let streakEl;
+
       const row = h("label", {
         class: "row",
         style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;"
@@ -122,13 +103,25 @@ export function renderToday(state){
           type: "checkbox",
           checked,
           onchange: (e) => {
+            // Update today's completion, then update header and this row in place
             CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
-            // trigger a re-render of the same view (app.js keeps scroll stable)
-            window.dispatchEvent(new Event("hashchange"));
+
+            const s = CTRL?.getState?.() || state;
+            const isoNow = todayISO();
+            const dayNow = s.days[isoNow] || { habits: {} };
+            const doneNow = Object.values(dayNow.habits || {}).filter(Boolean).length;
+            const totalNow = s.habits.length;
+            const pctNow = totalNow ? Math.round((doneNow/totalNow)*100) : 0;
+
+            countEl.textContent = totalNow ? `${doneNow} of ${totalNow} habits done` : "No habits yet";
+            barInner.style.width = `${pctNow}%`;
+
+            // Update this habit's streak badge
+            streakEl.textContent = `🔥 ${currentStreak(habit.id, s.days)}`;
           }
         }),
         h("span", { class: "mono", style: "flex:1;" }, habit.name),
-        h("span", { class: "pill" }, `🔥 ${streak}`)
+        (streakEl = h("span", { class: "pill" }, `🔥 ${streak}`))
       );
 
       list.append(row);
