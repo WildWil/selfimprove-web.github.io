@@ -1,20 +1,17 @@
 // app.js
 // v0.3 — bootstrap, storage, hash-router, backup/export, theme support
 
-import {
-  renderToday,
-  renderHistory,
-  renderHabits,
-  renderJournal,
-  renderSettings,
-  attachController
-} from "./ui.js";
+// View modules (split views)
+import { renderToday }    from "./views/today.js";
+import { renderHistory }  from "./views/history.js";
+import { renderHabits }   from "./views/habits.js";
+import { renderJournal }  from "./views/journal.js";
+import { renderSettings } from "./views/settings.js";
 
 import { todayISO } from "./streaks.js";
 import { buildSnapshot, downloadSnapshot, encodeSaveKey } from "./export.js";
 import { readSnapshotFile, readSnapshotFromKey, applySnapshotReplaceAll } from "./import.js";
 import { runOnboardingIfNeeded } from "./onboarding.js";
-
 
 /* ----------------------------- Constants -------------------------------- */
 const APP_VERSION = "0.1.0";
@@ -31,7 +28,7 @@ const DEFAULTS = Object.freeze({
   user: {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     theme: "auto", // auto | dark | light
-    startOfWeek: 1, // 0=Sun, 1=Mon
+    startOfWeek: 1, // 0=Sun, 1=Mon (you’re using Sunday in calendar.js right now)
   },
   habits: [],
   days: {},
@@ -108,7 +105,7 @@ function getRoute() {
 }
 
 function setActiveNav(route) {
-  qsa('[data-route]').forEach(a => {
+  qsa("[data-route]").forEach(a => {
     if (a.getAttribute("data-route") === route) {
       a.setAttribute("aria-current", "page");
     } else {
@@ -192,7 +189,7 @@ function getJournalForDate(isoDate) {
   return state.days?.[isoDate]?.journal || "";
 }
 
-// Replace BOTH existing updateUser() definitions with this one:
+// Unified user updater (keeps your theme behavior)
 function updateUser(patch = {}) {
   const state = loadState();
   const prevUser = state.user || {};
@@ -205,7 +202,7 @@ function updateUser(patch = {}) {
     if (typeof applyTheme === "function") {
       applyTheme(next.theme);
     } else {
-      // Fallback in case applyTheme isn't defined/imported:
+      // Fallback if applyTheme isn't available:
       const html = document.documentElement;
       if (next.theme === "auto") {
         html.removeAttribute("data-theme");
@@ -217,7 +214,6 @@ function updateUser(patch = {}) {
 
   return next;
 }
-
 
 function clearWelcome() {
   const state = loadState();
@@ -279,14 +275,17 @@ const routes = {
 };
 
 function render(route) {
-  const state = loadState();
+  // Keep state load if you want to do per-route decisions later
+  loadState();
   const root = qs("#app-root");
   if (!root) return;
   setBusy(true);
   root.innerHTML = "";
+
   const fn = routes[route] || routes.today;
-  const frag = fn(state);
-  root.appendChild(frag);
+  // New: views render into the root directly (no return fragment)
+  fn(root);
+
   setBusy(false);
   setActiveNav(route);
 }
@@ -304,26 +303,12 @@ function init() {
 
   // Run onboarding if needed (seeds starter habits once)
   runOnboardingIfNeeded(() => loadState(), partial => saveState(partial));
-  
+
   // Apply theme on boot and watch system for Auto
   applyTheme(state.user?.theme || "auto");
   watchSystemThemeIfAuto(() => loadState().user?.theme || "auto");
 
-  // expose controller to views
-  attachController({
-    getState,
-    addHabit,
-    deleteHabit,
-    toggleHabitForToday,
-    exportToFile,
-    getSaveKey,
-    importFromFile,
-    importFromKey,
-    setJournalForDate,
-    getJournalForDate,
-    updateUser,
-    clearWelcome,
-  });
+  // (Controller exposure removed — views import what they need directly)
 
   const meta = { ...state.meta, lastOpenDate: Date.now() };
   saveState({ meta });
@@ -332,16 +317,8 @@ function init() {
   render(getRoute());
 
   window.addEventListener("hashchange", () => render(getRoute()));
-  window.addEventListener("keydown", (e) => {
-    if (!e.altKey) return;
-    const map = { "1": "today", "2": "history", "3": "habits", "4": "journal", "5": "settings" };
-    const next = map[e.key];
-    if (next) {
-      location.hash = `#/${next}`;
-      e.preventDefault();
-    }
-  });
+
+  // Alt+1..5 keybinds removed per your preference
 }
 
 document.addEventListener("DOMContentLoaded", init);
- 
