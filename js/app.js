@@ -105,4 +105,226 @@ function getRoute() {
   const hash = (location.hash || "#/today").toLowerCase();
   const route = hash.replace(/^#\//, "");
   const valid = new Set(["today", "history", "habits", "journal", "settings"]);
-  return valid.has(
+  return valid.has(route) ? route : "today";
+}
+
+function setActiveNav(route) {
+  qsa("[data-route]").forEach(a => {
+    if (a.getAttribute("data-route") === route) a.setAttribute("aria-current", "page");
+    else a.removeAttribute("aria-current");
+  });
+}
+
+/* ------------------------------ Theme ----------------------------------- */
+const systemDarkQuery = window.matchMedia?.("(prefers-color-scheme: dark)");
+
+function resolveTheme(pref) {
+  if (pref === "dark" || pref === "light") return pref;
+  return systemDarkQuery?.matches ? "dark" : "light"; // auto → follow system
+}
+
+function applyTheme(pref) {
+  const resolved = resolveTheme(pref || "auto");
+  document.documentElement.setAttribute("data-theme", resolved);
+}
+
+function watchSystemThemeIfAuto(currentPrefGetter) {
+  if (!systemDarkQuery?.addEventListener) return;
+  systemDarkQuery.addEventListener("change", () => {
+    if (currentPrefGetter() === "auto") applyTheme("auto");
+  });
+}
+
+/* ------------------------------- Actions -------------------------------- */
+function getState() {
+  return loadState();
+}
+
+function addHabit(name) {
+  const state = loadState();
+  const id = `h_${Math.random().toString(36).slice(2, 8)}`;
+  const habit = {
+    id, name,
+    icon: "🔥",
+    targetDays: [0,1,2,3,4,5,6],
+    strict: false,
+    createdAt: Date.now()
+  };
+  const habits = [...state.habits, habit];
+  saveState({ habits });
+  return habit;
+}
+
+function deleteHabit(id) {
+  const state = loadState();
+  const habits = state.habits.filter(h => h.id !== id);
+  const days = { ...state.days };
+  for (const d in days) {
+    if (days[d]?.habits && id in days[d].habits) {
+      const copy = { ...days[d].habits };
+      delete copy[id];
+      days[d] = { ...days[d], habits: copy };
+    }
+  }
+  saveState({ habits, days });
+}
+
+function toggleHabitForToday(habitId, checked) {
+  const state = loadState();
+  const iso = todayISO();
+  const day = state.days[iso] || { habits: {}, ts: Date.now() };
+  day.habits = { ...(day.habits || {}), [habitId]: !!checked };
+  day.ts = Date.now();
+  const days = { ...state.days, [iso]: day };
+  saveState({ days });
+  return days[iso];
+}
+
+function setJournalForDate(isoDate, text) {
+  const state = loadState();
+  const day = state.days[isoDate] || { habits: {}, ts: Date.now() };
+  day.journal = text || "";
+  day.ts = Date.now();
+  const days = { ...state.days, [isoDate]: day };
+  saveState({ days });
+  return days[isoDate];
+}
+
+function getJournalForDate(isoDate) {
+  const state = loadState();
+  return state.days?.[isoDate]?.journal || "";
+}
+
+function updateUser(patch = {}) {
+  const state = loadState();
+  const prevUser = state.user || {};
+  const next = { ...prevUser, ...patch };
+  saveState({ user: next });
+
+  if (Object.prototype.hasOwnProperty.call(patch, "theme")) {
+    applyTheme(next.theme);
+  }
+  return next;
+}
+
+function clearWelcome() {
+  const state = loadState();
+  const meta = { ...(state.meta || {}), welcome: false };
+  saveState({ meta });
+  return meta;
+}
+
+/* -------- Backup / Restore -------- */
+function exportToFile() {
+  const state = loadState();
+  const snap = buildSnapshot(state);
+  downloadSnapshot(snap);
+}
+
+function getSaveKey() {
+  const state = loadState();
+  const snap = buildSnapshot(state);
+  return encodeSaveKey(snap);
+}
+
+async function importFromFile(file) {
+  const state = loadState();
+  const snap = await readSnapshotFile(file);
+  applySnapshotReplaceAll(snap, {
+    setUser: (u) => (state.user = u),
+    setHabits: (h) => (state.habits = h),
+    setDays: (d) => (state.days = d),
+    setMeta: (m) => (state.meta = m),
+    setVersion: (v) => (state.version = v),
+  });
+  saveState(state);
+  applyTheme(state.user?.theme || "auto");
+  location.hash = "#/today";
+}
+
+function importFromKey(keyStr) {
+  const state = loadState();
+  const snap = readSnapshotFromKey(keyStr);
+  applySnapshotReplaceAll(snap, {
+    setUser: (u) => (state.user = u),
+    setHabits: (h) => (state.habits = h),
+    setDays: (d) => (state.days = d),
+    setMeta: (m) => (state.meta = m),
+    setVersion: (v) => (state.version = v),
+  });
+  saveState(state);
+  applyTheme(state.user?.theme || "auto");
+  location.hash = "#/today";
+}
+
+/* ------------------------------- Router --------------------------------- */
+const routes = {
+  today: renderToday,
+  history: renderHistory,
+  habits: renderHabits,
+  journal: renderJournal,
+  settings: renderSettings,
+};
+
+function render(route) {
+  const state = loadState();
+  const root = qs("#app-root");
+  if (!root) return;
+  setBusy(true);
+  root.innerHTML = "";
+
+  const fn = routes[route] || routes.today;
+  // Views return a DOM node (keeps your original layout)
+  const frag = fn(state);
+  if (frag) root.appendChild(frag);
+
+  setBusy(false);
+  setActiveNav(route);
+}
+
+/* ------------------------------- Migrate -------------------------------- */
+function migrateIfNeeded(state) {
+  // hook for future schema changes
+  return state;
+}
+
+/* -------------------------------- Init ---------------------------------- */
+function init() {
+  ensureInitialized();
+  let state = loadState();
+  state = migrateIfNeeded(state);
+
+  // Seed starter data if needed
+  runOnboardingIfNeeded(() => loadState(), partial => saveState(partial));
+
+  // Theme boot + react to system changes when in Auto
+  applyTheme(state.user?.theme || "auto");
+  watchSystemThemeIfAuto(() => loadState().user?.theme || "auto");
+
+  // Expose controller to views (same API your old ui.js expects)
+  attachController({
+    getState,
+    addHabit,
+    deleteHabit,
+    toggleHabitForToday,
+    exportToFile,
+    getSaveKey,
+    importFromFile,
+    importFromKey,
+    setJournalForDate,
+    getJournalForDate,
+    updateUser,
+    clearWelcome,
+  });
+
+  const meta = { ...state.meta, lastOpenDate: Date.now() };
+  saveState({ meta });
+
+  setVersionBadge();
+  render(getRoute());
+
+  window.addEventListener("hashchange", () => render(getRoute()));
+  // Alt+1..5 keybinds intentionally removed
+}
+
+document.addEventListener("DOMContentLoaded", init);
