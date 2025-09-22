@@ -1,14 +1,15 @@
 // app.js
 // v0.3 — bootstrap, storage, hash-router, backup/export, theme support
 
-import {
-  renderToday,
-  renderHistory,
-  renderHabits,
-  renderJournal,
-  renderSettings,
-  attachController
-} from "./ui.js";
+// Views (split files, same signatures as your old ui.js)
+import { renderToday }    from "./views/today.js";
+import { renderHistory }  from "./views/history.js";
+import { renderHabits }   from "./views/habits.js";
+import { renderJournal }  from "./views/journal.js";
+import { renderSettings } from "./views/settings.js";
+
+// Controller injection now lives in helpers
+import { attachController } from "./ui-helpers.js";
 
 import { todayISO } from "./streaks.js";
 import { buildSnapshot, downloadSnapshot, encodeSaveKey } from "./export.js";
@@ -30,7 +31,7 @@ const DEFAULTS = Object.freeze({
   user: {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
     theme: "auto", // auto | dark | light
-    startOfWeek: 1, // 0=Sun, 1=Mon (calendar.js currently forces Sunday visually)
+    startOfWeek: 1, // 0=Sun, 1=Mon (calendar.js currently locks UI to Sunday)
   },
   habits: [],
   days: {},
@@ -87,7 +88,7 @@ function saveState(partial) {
 
 /* ------------------------------ Utilities ------------------------------- */
 const qs = (sel, el = document) => el.querySelector(sel);
-const qsa = (sel, el = document) => [...el.querySelectorAll(sel)];
+const qsa = (sel, el = document) => Array.from(el.querySelectorAll(sel));
 
 function setBusy(isBusy) {
   const root = qs("#app-root");
@@ -100,4 +101,8 @@ function setVersionBadge() {
   if (el) el.textContent = `v${APP_VERSION}`;
 }
 
-function getRout
+function getRoute() {
+  const hash = (location.hash || "#/today").toLowerCase();
+  const route = hash.replace(/^#\//, "");
+  const valid = new Set(["today", "history", "habits", "journal", "settings"]);
+  return valid.has(
