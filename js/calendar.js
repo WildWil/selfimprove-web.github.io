@@ -1,7 +1,10 @@
-// calendar.js — v0.1 helpers
+// calendar.js — v0.1.1: updated ymd() to use local date
 
 export function ymd(d){
-  return d.toISOString().slice(0,10);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function firstOfMonth(date){
@@ -20,6 +23,6 @@ export function endOfCalendar(date){
   const e = new Date(f.getFullYear(), f.getMonth()+1, 0); // last of month
   const pad = 6 - e.getDay();
   const ret = new Date(e);
-  ret.setDate(e.getDate()+pad); // forward to Sat
+  ret.setDate(e.getDate() + pad); // forward to Sat
   return ret;
 }
