@@ -1,25 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <!-- build:v0.1 (MVP scaffold) -->
+  <!-- build:v0.6.0 -->
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="Offline self-improvement dashboard — habits, streaks, journal, and weekly review. All data stays on your device." />
+  <meta name="description" content="Offline self-improvement dashboard — habits, streaks, journal, and history. Data stays on your device." />
   <meta name="color-scheme" content="dark light" />
   <meta name="theme-color" content="#0f1220" />
   <title>SelfTrack</title>
 
-  <!-- App styles (local only) -->
+  <!-- App styles -->
   <link rel="stylesheet" href="/css/app.css" />
   <link rel="preload" href="/css/app.css" as="style" />
 
-<!-- Favicon -->
-<link rel="icon" href="data/assets/favicon.png" type="image/png">
-<link rel="apple-touch-icon" href="data/assets/favicon.png">
-
+  <!-- Icons -->
+  <link rel="icon" href="/data/assets/favicon.png" type="image/png" />
 </head>
 <body>
- <a href="#app-root" class="skip-link">Skip to content</a>
+  <a href="#app-root" class="skip-link">Skip to content</a>
 
   <header class="site-header" role="banner">
     <div class="wrap">
@@ -42,55 +40,18 @@
   </header>
 
   <main id="main" class="site-main" role="main">
-    <!-- App root where views are rendered -->
     <section id="app-root" class="view-root" aria-live="polite" aria-busy="true">
-      <!-- Initial placeholder content (replaced by JS) -->
-      <div class="placeholder">
-        <h1 class="placeholder__title">Loading…</h1>
-        <p class="placeholder__text">If this shows up, website is probably under maintenance, will be back up soon...</p>
-      </div>
+      <!-- view renders here -->
     </section>
   </main>
 
   <footer class="site-footer" role="contentinfo">
     <div class="wrap">
-      <small>
-        <span id="app-version" class="mono">v0.6</span>
-        <span aria-hidden="true"> • </span>
-        <span>All data stored locally on your device.</span>
-      </small>
+      <small>SelfTrack <span id="app-version">v0.6.0</span> — all data stays on your device</small>
     </div>
   </footer>
 
-  <!-- Reusable UI containers (managed by JS) -->
-  <div id="toast-region" class="toast-region" role="status" aria-live="polite" aria-atomic="true"></div>
-  <div id="dialog-region" class="dialog-region" aria-hidden="true"></div>
-
-  <!-- NoScript message for non-JS environments -->
-  <noscript>
-    <div class="noscript">
-      <strong>JavaScript is disabled.</strong>
-      <p>This app runs entirely in your browser. Please enable JavaScript to use habit tracking, journaling, and save/load.</p>
-    </div>
-  </noscript>
-
-<script src="js/quotes.js"></script>
-<script src="js/app.js" type="module"></script>
-
-  <!-- App entry (ES module). This file imports the rest of the modules. -->
+  <!-- Single module entry -->
   <script type="module" src="/js/app.js"></script>
-
-  <!-- Optional: register service worker later (PWA/offline caching)
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sw.js").catch(() => {});
-      });
-    }
-  </script>
-  -->
-
-  <!-- Accessibility helpers (kept in DOM for screen readers) -->
-  <div id="sr-messages" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 </body>
 </html>
