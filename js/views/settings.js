@@ -1,75 +1,50 @@
-import { h, mount, applyTheme, toast } from "../ui.js";
-import { loadState, saveState } from "../storage.js";
+import { h, card, fieldRow, CTRL } from "../ui-helpers.js";
 
-export function renderSettings(root) {
-  let state = loadState();
+export function renderSettings(state){
+  const wrap = h("div", { class: "wrap" });
+  const version = document.getElementById("app-version")?.textContent || "";
 
-  function setTheme(mode) {
-    state.theme = mode; saveState(state);
-    applyTheme(mode);
-  }
-
-  const title = h("h1", { class: "page-title" }, "Settings");
-
-  // Theme
-  const themeLabel = h("label", {}, "Theme: ");
-  const themeSel = h("select", {
-    class: "input",
-    onChange: e => setTheme(e.target.value)
-  },
-    h("option", { value: "auto" }, "Auto"),
-    h("option", { value: "light" }, "Light"),
-    h("option", { value: "dark" }, "Dark"),
+  const themeSel = h("select", { class: "input" },
+    h("option", { value: "auto", text: "Auto (follow system)" }),
+    h("option", { value: "dark", text: "Dark" }),
+    h("option", { value: "light", text: "Light" })
   );
-  themeSel.value = state.theme || "auto";
+  themeSel.value = state.user?.theme || "auto";
+  themeSel.addEventListener("change", () => CTRL?.updateUser?.({ theme: themeSel.value }));
 
-  // Start of week (locked to Sunday for now but leave control for later)
-  const sow = h("select", {
-    class: "input",
-    onChange: e => { state.startOfWeek = Number(e.target.value); saveState(state); toast("Start of week saved"); }
-  },
-    h("option", { value: 0 }, "Sunday"),
-    h("option", { value: 1 }, "Monday")
+  const cardPrefs = card("Preferences",
+    fieldRow("Theme", themeSel)
   );
-  sow.value = typeof state.startOfWeek === "number" ? state.startOfWeek : 0;
 
-  // Copy / Export
-  const copyBtn = h("button", {
-    class: "btn",
+  // Start of week selector (even though calendar currently locks to Sunday)
+  const sow = h("select", { class: "input" },
+    h("option", { value: 0, text: "Sunday" }),
+    h("option", { value: 1, text: "Monday" }),
+  );
+  sow.value = typeof state.user?.startOfWeek === "number" ? state.user.startOfWeek : 0;
+  sow.addEventListener("change", () => CTRL?.updateUser?.({ startOfWeek: Number(sow.value) }));
+
+  cardPrefs.append(fieldRow("Start of week:", sow));
+
+  // Export / Import
+  const copyBtn = h("button", { class: "btn", type: "button",
     onClick: async () => {
-      const text = JSON.stringify(loadState());
-      await navigator.clipboard.writeText(text);
-      toast("Save key copied");
+      const key = CTRL?.getSaveKey?.();
+      await navigator.clipboard.writeText(key);
+      copyBtn.textContent = "Copied!";
+      setTimeout(() => (copyBtn.textContent = "Copy Save Key"), 1200);
     }
   }, "Copy Save Key");
 
-  // Import
   const file = h("input", { type: "file", accept: "application/json" });
-  const importBtn = h("button", {
-    class: "btn",
-    onClick: async () => {
-      const f = file.files?.[0];
-      if (!f) return;
-      const text = await f.text();
-      try {
-        const next = JSON.parse(text);
-        saveState(next);
-        toast("Save key imported");
-        location.reload();
-      } catch {
-        toast("Invalid JSON file");
-      }
-    }
+  const importBtn = h("button", { class: "btn", type: "button",
+    onClick: async () => { if (file.files?.[0]) await CTRL?.importFromFile?.(file.files[0]); }
   }, "Import Save Key");
 
-  const sectionGeneral = h("div", { class: "card" },
-    h("div", { class: "card-row" }, themeLabel, themeSel),
-    h("div", { class: "card-row" }, h("label", {}, "Start of week: "), sow)
-  );
-  const sectionData = h("div", { class: "card" },
-    h("div", { class: "card-row" }, copyBtn),
-    h("div", { class: "card-row" }, file, importBtn)
+  const dataCard = card("Data",
+    h("div", { class: "row", style: "gap:.75rem;align-items:center;flex-wrap:wrap;" }, copyBtn, file, importBtn)
   );
 
-  mount(root, h("div", { class: "page" }, title, sectionGeneral, sectionData));
+  wrap.append(cardPrefs, dataCard, h("p", { class: "muted mono", style: "margin-top:1rem;" }, `${version} • All data stays on this device.`));
+  return wrap;
 }
