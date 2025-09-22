@@ -1,55 +1,63 @@
-# SelfTrack — Static Self-Improvement Dashboard
+# SelfTrack
 
-**Version:** v0.1 (MVP scaffold)  
+**Version:** v0.7.1 (Clean Build)
 **Live Demo:** [https://selfimprove-web.github.io/](https://selfimprove-web.github.io/)
 
 ## 📖 About
-SelfTrack is a fully static, offline-first web app for habit tracking, streak building, journaling, and weekly reviews.  
-No servers, no accounts, all data stays local in your browser.  
-You can export a **save key** (JSON file) and re-import it later to carry your progress across devices.
+
+SelfTrack is a fully static, offline-first web app for habit tracking, streak building, journaling, and calendar-based history.
+It runs entirely in your browser. No accounts, no servers, no data collection.
+Progress is stored locally, with simple **export/import** options to carry your habits and journal across devices.
 
 ## 🗂️ Project Structure
 
-- `index.html` — Main entry (router + app root)  
-- `.nojekyll` — Disable Jekyll on GitHub Pages  
+* `index.html` — App shell + router entry
+* `.nojekyll` — Keeps GitHub Pages from rewriting assets
 
-**css/**  
-- `app.css` — Base styles, variables, components  
+**css/**
 
-**js/**  
-- `app.js` — App bootstrap + router  
-- `ui.js` — Render helpers + views  
-- `export.js` — Save key export  
-- `import.js` — Save key import  
-- `streaks.js` — Streak logic  
-- `calendar.js` — Calendar helpers  
-- `metrics.js` — Local analytics  
-- `onboarding.js` — First-run setup  
-- `validators.js` — Schema checks  
-- `quotes.js` — Daily quotes loader  
+* `app.css` — Styles, dark/light theme, components
 
-**data/**  
-- `quotes.json` — Motivational quotes  
+**js/**
 
-**assets/**  
-- `icons.svg` — SVG sprite for UI icons  
+* `app.js` — Core bootstrap, state, router, controller
+* `ui.js` — UI helpers + views (Today, History, Habits, Journal, Settings)
+* `streaks.js` — Streak calculation
+* `calendar.js` — Calendar helpers
+* `export.js` — Export JSON / Save Key
+* `import.js` — Import JSON / Save Key
+* `onboarding.js` — First-run setup (welcome banner removed)
 
+**data/**
 
+* `quotes.json` — Motivational quotes
+
+**assets/**
+
+* `icons.svg` — Inline SVG sprite
 
 ## 🔑 Save & Load
 
-* **Export** → generates a JSON file with your habits, streaks, and journal.
-* **Import** → upload your saved JSON to restore progress.
-  *(All logic is local; nothing is uploaded to a server.)*
+* **Export** → Download a JSON file with your habits, streaks, and journal
+* **Import** → Upload a JSON or paste a Save Key to restore progress
+* Everything is 100% local, no syncing to external servers
+
+## 🚀 Features
+
+* Habit tracking with daily check-offs
+* Automatic streaks and progress %
+* Motivational quote of the day (rotates from `quotes.json`)
+* Calendar history with popovers and detailed day view
+* Journal with autosave and day navigation
+* Dark/Light/Auto themes in Settings
+* Data backup & restore (Save Key or JSON file)
 
 ## 🛠️ Roadmap
 
-* [ ] Core: Habits, streaks, journaling, weekly view
-* [ ] Save key export/import (MVP)
 * [ ] Challenge modes (30/75-day)
 * [ ] Progress photos (optional)
-* [ ] Offline caching (PWA)
-* [ ] Encryption for save key (AES-GCM)
+* [ ] Offline caching & installable PWA
+* [ ] Encrypted Save Keys
 
 ## ⚖️ License
 
