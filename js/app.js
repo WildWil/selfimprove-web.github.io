@@ -1,5 +1,5 @@
 // app.js
-// v0.3 — bootstrap, storage, hash-router, backup/export, theme support
+// v0.6.0 — bootstrap, storage, hash-router, backup/export, theme support
 
 import {
   renderToday,
@@ -15,9 +15,8 @@ import { buildSnapshot, downloadSnapshot, encodeSaveKey } from "./export.js";
 import { readSnapshotFile, readSnapshotFromKey, applySnapshotReplaceAll } from "./import.js";
 import { runOnboardingIfNeeded } from "./onboarding.js";
 
-
 /* ----------------------------- Constants -------------------------------- */
-const APP_VERSION = "0.1.0";
+const APP_VERSION = "0.6.0";
 const NS = "selftrack";
 const KEYS = {
   user: `${NS}:user`,
@@ -85,6 +84,8 @@ function saveState(partial) {
   if (partial.meta) storage.set(KEYS.meta, partial.meta);
 }
 
+let LAST_ROUTE = null;
+
 /* ------------------------------ Utilities ------------------------------- */
 const qs = (sel, el = document) => el.querySelector(sel);
 const qsa = (sel, el = document) => [...el.querySelectorAll(sel)];
@@ -131,7 +132,6 @@ function applyTheme(pref) {
 }
 
 function watchSystemThemeIfAuto(currentPrefGetter) {
-  // Update only when user preference is "auto"
   if (!systemDarkQuery?.addEventListener) return;
   systemDarkQuery.addEventListener("change", () => {
     if (currentPrefGetter() === "auto") applyTheme("auto");
@@ -192,32 +192,16 @@ function getJournalForDate(isoDate) {
   return state.days?.[isoDate]?.journal || "";
 }
 
-// Replace BOTH existing updateUser() definitions with this one:
 function updateUser(patch = {}) {
   const state = loadState();
   const prevUser = state.user || {};
   const next = { ...prevUser, ...patch };
-
   saveState({ user: next });
-
-  // Apply theme immediately if it was part of the update
   if (Object.prototype.hasOwnProperty.call(patch, "theme")) {
-    if (typeof applyTheme === "function") {
-      applyTheme(next.theme);
-    } else {
-      // Fallback in case applyTheme isn't defined/imported:
-      const html = document.documentElement;
-      if (next.theme === "auto") {
-        html.removeAttribute("data-theme");
-      } else {
-        html.setAttribute("data-theme", next.theme);
-      }
-    }
+    applyTheme(next.theme);
   }
-
   return next;
 }
-
 
 function clearWelcome() {
   const state = loadState();
@@ -250,7 +234,8 @@ async function importFromFile(file) {
     setVersion: (v) => (state.version = v),
   });
   saveState(state);
-  applyTheme(state.user?.theme || "auto"); // ensure theme matches imported pref
+  applyTheme(state.user?.theme || "auto");
+  alert("Import complete.");
   location.hash = "#/today";
 }
 
@@ -266,6 +251,7 @@ function importFromKey(keyStr) {
   });
   saveState(state);
   applyTheme(state.user?.theme || "auto");
+  alert("Import complete.");
   location.hash = "#/today";
 }
 
@@ -282,6 +268,10 @@ function render(route) {
   const state = loadState();
   const root = qs("#app-root");
   if (!root) return;
+
+  const sameRoute = route === LAST_ROUTE;
+  const prevY = sameRoute ? window.scrollY : 0;
+
   setBusy(true);
   root.innerHTML = "";
   const fn = routes[route] || routes.today;
@@ -289,10 +279,21 @@ function render(route) {
   root.appendChild(frag);
   setBusy(false);
   setActiveNav(route);
+
+  if (sameRoute) {
+    window.scrollTo(0, prevY);
+  } else {
+    window.scrollTo(0, 0);
+  }
+  LAST_ROUTE = route;
 }
 
 /* ------------------------------- Migrate -------------------------------- */
 function migrateIfNeeded(state) {
+  if (state.version !== APP_VERSION) {
+    state.version = APP_VERSION;
+    storage.set(KEYS.version, APP_VERSION);
+  }
   return state;
 }
 
@@ -302,14 +303,11 @@ function init() {
   let state = loadState();
   state = migrateIfNeeded(state);
 
-  // Run onboarding if needed (seeds starter habits once)
   runOnboardingIfNeeded(() => loadState(), partial => saveState(partial));
   
-  // Apply theme on boot and watch system for Auto
   applyTheme(state.user?.theme || "auto");
   watchSystemThemeIfAuto(() => loadState().user?.theme || "auto");
 
-  // expose controller to views
   attachController({
     getState,
     addHabit,
@@ -344,4 +342,3 @@ function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
- 
