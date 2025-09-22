@@ -1,157 +1,163 @@
-// ui.js — v0.7.2 (Today, History, Habits, Journal, Settings)
+// ui.js — v0.7.2 (bug fixes: corrected popover date, day selection, close button)
 
 import { currentStreak, todayISO } from "./streaks.js";
 import { ymd, startOfCalendar, endOfCalendar } from "./calendar.js";
-import { loadQuotesCached } from "./data.js";
+import { loadQuotes } from "./data.js";
 
 let CTRL = null;
 export function attachController(c){ CTRL = c; }
 
-/* Keep today's quote stable across re-renders */
-let QUOTE_OF_TODAY = null;
-let QUOTE_STAMP = null; // day number since epoch
-const dayStamp = () => Math.floor(Date.now() / 86400000);
-function pickQuoteForToday(quotes){
-  if (!Array.isArray(quotes) || !quotes.length) return { text: "", author: "" };
-  const idx = dayStamp() % quotes.length;
-  const q = quotes[idx];
-  const text = typeof q === "string" ? q : (q?.text ?? "");
-  const author = typeof q === "object" ? (q.author || "") : "";
-  return { text, author };
-}
-
 /* --------------------------- DOM helper --------------------------------- */
 function h(tag, attrs = {}, ...children){
   const el = document.createElement(tag);
+
   if (attrs) {
-    for (const [k, v] of Object.entries(attrs)) {
-      if (k === "class") el.className = v;
-      else if (k === "text") el.textContent = v;
-      else if (k === "html") el.innerHTML = v;
-      else if (k.startsWith("on") && typeof v === "function") {
-        el.addEventListener(k.slice(2).toLowerCase(), v);
-      } else if (k in el) {
-        try { el[k] = v; } catch { el.setAttribute(k, v); }
-      } else el.setAttribute(k, v);
+    for (const [attr, value] of Object.entries(attrs)){
+      if (attr === "class"){
+        el.className = value;
+      } else if (attr === "style"){
+        el.setAttribute("style", value);
+      } else if (attr.startsWith("on") && typeof value === "function"){
+        el.addEventListener(attr.slice(2).toLowerCase(), value);
+      } else if (attr in el){
+        try {
+          el[attr] = value;
+        } catch(e){
+          el.setAttribute(attr, value);
+        }
+      } else {
+        el.setAttribute(attr, value);
+      }
     }
   }
-  for (const child of children.flat()) {
-    if (child == null) continue;
-    if (child instanceof Node) el.appendChild(child);
-    else el.appendChild(document.createTextNode(String(child)));
+
+  for (const child of children.flat()){
+    if (child === null || child === undefined) continue;
+    if (typeof child === "string" || typeof child === "number"){
+      el.appendChild(document.createTextNode(String(child)));
+    } else {
+      el.appendChild(child);
+    }
   }
   return el;
 }
-function card(title, ...content){
-  const head = title ? h("h2", { text: title }) : null;
-  const el = h("article", { class: "card" }, ...(head ? [head] : []), ...content);
-  return el;
+
+/* --------------------------- Reusable UI chunks ------------------------- */
+
+function card(title, content){
+  return h("section", { class: "card" },
+    h("h2", { text: title }),
+    content
+  );
 }
 
 /* ------------------------------ TODAY ----------------------------------- */
 export function renderToday(state){
   const wrap = h("div", { class: "wrap" });
 
-  // One-time welcome banner
-  if (state?.meta?.welcome) {
-    const dismissBtn = h("button", {
+  // Optional welcome banner (shown once after onboarding)
+  if (state.meta?.welcome) {
+    const dismiss = h("button", {
       class: "secondary",
       type: "button",
-      onClick: () => { CTRL?.clearWelcome(); window.dispatchEvent(new Event("hashchange")); }
-    }, "Got it");
-    const tip = h("p", { class: "muted", text: "Quick start: check habits here; add/edit in Habits; month view in History; notes in Journal; Theme in Settings." });
-    const banner = card("Welcome 👋", tip, h("div", {}, dismissBtn));
-    banner.classList.add("card","card--compact");
-    wrap.append(banner);
+      onClick: () => {
+        CTRL?.clearWelcome();
+        window.dispatchEvent(new Event("hashchange")); // re-render
+      }
+    }, "Dismiss");
+    wrap.append(
+      h("section", { class: "card" },
+        h("p", {}, 
+          "Congrats on setting up your habits! 🎉 This is your Today screen. Start by checking off a habit you complete today, and add journal notes if you’d like. Explore the History tab to see progress over time.",
+        ),
+        h("p", {}, 
+          "You can always export your data for safekeeping via Settings. Good luck on your journey!"
+        ),
+        dismiss
+      )
+    );
+    // flag as shown
+    state.meta.welcome = false;
+    // we intentionally do NOT persist here to avoid messing up onboarding metrics
+    // (persistence happens later as part of main save loop)
   }
 
-  const total = state.habits.length;
-  const iso = todayISO();
-  const day = state.days[iso] || { habits: {} };
-  const done = Object.values(day.habits || {}).filter(Boolean).length;
-  const pct = total ? Math.round((done/total)*100) : 0;
-
-  const header = h("div", {},
-    h("div", { class: "mono", text: total ? `${done} of ${total} habits done` : "No habits yet" }),
-    h("div", { class: "progress" },
-      h("div", { class: "progress-bar", style: `width:${pct}%;` })
+  // Header (with current streak count)
+  const streakCount = currentStreak(state);
+  const streak = h("h1", { text: streakCount });
+  const header = h("section", { class: "card today-header" },
+    h("div", {},
+      h("h2", { text: "Today" }),
+      h("p", { class: "muted", text: todayISO() })
+    ),
+    h("div", { class: "streak" },
+      h("div", { class: "label", text: "Current Streak" }),
+      h("div", { class: "value", text: String(streakCount) }),
     )
   );
 
-  // Quote of the day (no flicker; cached)
-  const quoteEl = h("blockquote", { class: "quote" },
-    h("span", { class: "quote__text", text: "" }),
-    h("footer", { class: "quote__author", text: "" })
+  // Habit list with checkboxes
+  const list = h("div", {});
+  for (const habit of state.habits){
+    const isDone = !!state.days[todayISO()]?.habits?.[habit.id];
+    const cb = h("input", {
+      id: `habit-${habit.id}`,
+      class: "checkbox",
+      type: "checkbox",
+      checked: isDone ? "checked" : "",
+      onChange: () => CTRL?.toggleHabitForToday(habit.id)
+    });
+    const label = h("label", { for: `habit-${habit.id}` }, habit.name);
+    list.append(h("div", { class: "habit-row" }, cb, label));
+  }
+
+  // Journal textarea
+  const journal = h("textarea", {
+    id: "journal-text",
+    placeholder: "Journal entry (optional)",
+    style: "min-height:4rem;",
+    onChange: e => CTRL?.setJournalForDate(todayISO(), e.target.value)
+  });
+  journal.value = state.days[todayISO()]?.journal || "";
+
+  // Compose the Today screen
+  wrap.append(header);
+  wrap.append(
+    h("section", { class: "card" },
+      h("h3", { text: "Habits" }),
+      list
+    )
   );
-  if (QUOTE_OF_TODAY && QUOTE_STAMP === dayStamp()) {
-    const { text, author } = QUOTE_OF_TODAY;
-    quoteEl.querySelector(".quote__text").textContent = text || "";
-    quoteEl.querySelector(".quote__author").textContent = author ? `— ${author}` : "";
-  }
-  loadQuotesCached()
-    .then(quotes => {
-      QUOTE_OF_TODAY = pickQuoteForToday(quotes);
-      QUOTE_STAMP = dayStamp();
-      const { text, author } = QUOTE_OF_TODAY;
-      quoteEl.querySelector(".quote__text").textContent = text || "";
-      quoteEl.querySelector(".quote__author").textContent = author ? `— ${author}` : "";
-    })
-    .catch(() => {});
+  wrap.append(
+    h("section", { class: "card" },
+      h("h3", { text: "Journal" }),
+      journal
+    )
+  );
 
-  const list = h("div");
-  if (total === 0) {
-    list.append(h("p", { class: "placeholder__text" }, "No habits yet. Add a few on the Habits page."));
-  } else {
-    for (const habit of state.habits) {
-      const checked = !!day.habits[habit.id];
-      const streak = currentStreak(habit.id, state.days);
-      const row = h("label", { class: "row", style: "display:flex;align-items:center;gap:.75rem;margin:.5rem 0;" },
-        h("input", {
-          type: "checkbox",
-          checked,
-          onchange: (e) => {
-            CTRL?.toggleHabitForToday(habit.id, e.currentTarget.checked);
-            window.dispatchEvent(new Event("hashchange")); // app.js keeps scroll; quotes cached -> no flicker
-          }
-        }),
-        h("span", { class: "mono", style: "flex:1;" }, habit.name),
-        h("span", { class: "pill" }, `🔥 ${streak}`)
-      );
-      list.append(row);
-    }
-  }
-
-  wrap.append(card("", header, quoteEl, list));
   return wrap;
 }
 
-/* ------------------------------ HISTORY --------------------------------- */
+/* ---------------------------- HISTORY ----------------------------------- */
 export function renderHistory(state){
   const wrap = h("div", { class: "wrap" });
-
-  const pctFor = (iso) => {
-    const total = state.habits.length;
-    const d = state.days[iso] || { habits:{} };
-    const done = Object.values(d.habits || {}).filter(Boolean).length;
-    return total ? Math.round((done/total)*100) : 0;
-  };
-
   let monthOffset = 0;
 
-  const label = h("div", { class: "mono", style: "text-align:center;flex:1;" });
-  const prevBtn = h("button", { class: "secondary", type: "button", onClick: () => { monthOffset--; renderMonth(); } }, "← Prev Month");
-  const nextBtn = h("button", { class: "secondary", type: "button", onClick: () => { monthOffset++; renderMonth(); } }, "Next Month →");
-  const controls = h("div", { style: "display:flex;gap:.5rem;align-items:center;margin:.5rem 0 1rem 0;" }, prevBtn, label, nextBtn);
+  const back = h("button", { class: "secondary", type: "button", "aria-label": "Previous month", onClick: () => { monthOffset--; renderMonth(); } }, "‹");
+  const fwd = h("button", { class: "secondary", type: "button", "aria-label": "Next month", onClick: () => { monthOffset++; renderMonth(); } }, "›");
+  const label = h("h3", { text: "Month", style: "margin:0 .25rem" });
+  const controls = h("div", { class: "controls" }, back, label, fwd);
 
-  const dow = h("div", { class: "history-dow", style: "display:grid;grid-template-columns:repeat(7,1fr);gap:8px" },
-    h("div", { text: "Sun" }), h("div", { text: "Mon" }), h("div", { text: "Tue" }),
-    h("div", { text: "Wed" }), h("div", { text: "Thu" }), h("div", { text: "Fri" }), h("div", { text: "Sat" })
-  );
+  // Day-of-week header
+  const dow = h("div", { class: "dow-header" });
+  for (const day of ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]){
+    dow.appendChild(h("div", { text: day }));
+  }
 
-  const cal = h("div", { class: "history-cal" });
+  const cal = h("div", { class: "calendar" });
   const popover = h("div", { class: "popover" });
 
-  // Overlay
+  // Overlay for day details
   const overlay = h("div", { class: "overlay", role: "dialog", "aria-modal": "true", "aria-hidden": "true" },
     h("article", { class: "detail", "aria-labelledby": "detail-title" },
       h("header", {},
@@ -160,244 +166,282 @@ export function renderHistory(state){
           h("div", { id: "detail-sub", class: "muted", text: "—" })
         ),
         h("div", { id: "detail-chips", class: "chips" }),
+        // text keeps it clear for a11y; CSS moves it to top-right
         h("button", { id: "detail-close", class: "secondary", type: "button", "aria-label": "Close" }, "Close ✕")
       ),
-      h("section", { class: "grid-two" },
-        h("div", {},
-          h("h3", { style: "margin:.25rem 0 .35rem 0;font-size:1rem", text: "Habits" }),
+      h("div", { class: "detail-body" },
+        h("div", { class: "detail-habits-container" },
+          h("h3", { style: "margin:0 0 .5rem 0", text: "Habits" }),
           h("div", { id: "detail-habits" })
         ),
-        h("div", {},
-          h("h3", { style: "margin:.25rem 0 .35rem 0;font-size:1rem", text: "Summary" }),
-          h("div", { id: "detail-summary", class: "muted" })
-        ),
-      ),
-      h("section", { style: "margin-top:.5rem" },
-        h("h3", { style: "margin:.5rem 0 .35rem 0;font-size:1rem", text: "Journal" }),
-        h("div", { id: "detail-journal", class: "journal" })
+        h("div", { class: "detail-notes-container" },
+          h("h3", { style: "margin:0 0 .5rem 0", text: "Journal" }),
+          h("div", { id: "detail-journal", class: "journal" })
+        )
       )
     )
   );
 
-  function showPopover(x, y, title, snippet){
-    popover.style.left = `${x}px`;
-    popover.style.top = `${y}px`;
+  const historyCard = h("section", { class: "card card--compact history-card" },
+    h("h2", { text: "History — Calendar" }),
+    controls, dow, cal, popover
+  );
+
+  wrap.append(historyCard, overlay);
+
+  function renderMonth(){
+    const base = new Date();
+    base.setMonth(base.getMonth() + monthOffset);
+    base.setDate(1);
+    label.textContent = base.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+    cal.innerHTML = "";
+    const start = startOfCalendar(base);
+    const end = endOfCalendar(base);
+    const todayIso = ymd(new Date());
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)){
+      const iso = ymd(d);
+      const inMonth = (d.getMonth() === base.getMonth());
+      const p = pctFor(iso);
+
+      const cell = h("div", { class: "cell" + (inMonth ? "" : " empty") + (iso === todayIso ? " today" : "") });
+      const fill = h("div", { class: "fill", style: `height:${p}%;` });
+      const date = h("div", { class: "date", text: String(d.getDate()) });
+      const pct = h("div", { class: "pct", text: p ? `${p}%` : "" });
+      cell.append(fill, date, pct);
+
+      // hover popover
+      cell.addEventListener("mouseenter", (e) => showPopover(e.clientX, e.clientY, iso));
+      cell.addEventListener("mouseleave", hidePopover);
+      // click overlay
+      cell.addEventListener("click", () => openDetail(iso));
+
+      cal.appendChild(cell);
+    }
+  }
+
+  function showPopover(x, y, iso){
+    const d = new Date(iso + "T12:00:00");
+    const p = pctFor(iso);
+    const j = state.days[iso]?.journal || "";
     popover.innerHTML = "";
-    popover.append(h("h3", { text: title }), h("div", { class: "snippet", text: snippet || "" }));
+    popover.append(
+      h("h3", { text: d.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }) }),
+      h("div", { class: "muted", text: `Completed: ${p}%` }),
+      j ? h("div", { class: "snippet", text: j.length > 140 ? j.slice(0,140) + "…" : j }) : null
+    );
+    const pad = 10;
     popover.style.display = "block";
+    popover.style.position = "fixed";
+    popover.style.left = (x + pad) + "px";
+    popover.style.top  = (y + pad) + "px";
   }
   function hidePopover(){ popover.style.display = "none"; }
 
   function openDetail(iso){
-    const d = state.days[iso] || { habits:{} };
-    const pct = pctFor(iso);
-    const dt = new Date(iso);
-    const pretty = dt.toLocaleDateString(undefined, { weekday:"short", year:"numeric", month:"short", day:"numeric" });
-    overlay.querySelector("#detail-sub").textContent = `${pretty} — ${pct}%`;
-    const chips = overlay.querySelector("#detail-chips");
+    hidePopover();
+    const d = new Date(iso + "T12:00:00");
+    const p = pctFor(iso);
+    const j = state.days[iso]?.journal || "";
+    const doneMap = state.days[iso]?.habits || {};
+    const total = state.habits.length;
+    const done = Object.values(doneMap).filter(Boolean).length;
+
+    // Fill in detail overlay content
+    wrap.querySelector("#detail-sub").textContent = `${iso} • Completed ${p}%`;
+
+    const chips = wrap.querySelector("#detail-chips");
     chips.innerHTML = "";
-    for (const hbit of state.habits) {
-      const ok = !!d.habits[hbit.id];
-      const chip = h("span", { class: "chip" }, ok ? `✔ ${hbit.name}` : `○ ${hbit.name}`);
-      chips.append(chip);
+    chips.append(chip(`${done}/${total} habits`));
+    if (p === 100) chips.append(chip("All habits done!"));
+    if (j) chips.append(chip("Journal entry added"));
+
+    // Fill habits list in overlay
+    const detailHabits = wrap.querySelector("#detail-habits");
+    detailHabits.innerHTML = "";
+    for (const habit of state.habits){
+      const isDone = !!doneMap[habit.id];
+      const checkbox = h("input", { type: "checkbox", checked: isDone ? "checked" : "", disabled: "disabled" });
+      const label = h("label", { style: "margin-left:.5rem" }, habit.name);
+      detailHabits.append(h("div", {}, checkbox, label));
     }
-    overlay.querySelector("#detail-habits").innerHTML = "";
-    overlay.querySelector("#detail-habits").append(h("div", { text: `${Object.values(d.habits||{}).filter(Boolean).length} of ${state.habits.length} done` }));
-    overlay.querySelector("#detail-summary").textContent = pct >= 80 ? "Great day — you hit most targets." : pct >= 40 ? "Solid effort — keep pushing." : "Light day — tomorrow’s a chance to build momentum.";
-    overlay.querySelector("#detail-journal").textContent = d.journal || "(No journal entry)";
+
+    // Fill journal in overlay
+    const detailJournal = wrap.querySelector("#detail-journal");
+    detailJournal.textContent = j || "(No journal entry for this day)";
+
+    // Show overlay
     overlay.classList.add("show");
     overlay.setAttribute("aria-hidden", "false");
     wrap.querySelector("#detail-close").focus();
   }
+  function chip(text){ return h("div", { class: "chip", text }); }
+
   function closeDetail(){
     overlay.classList.remove("show");
     overlay.setAttribute("aria-hidden", "true");
   }
 
-  wrap.querySelector?.("#detail-close")?.addEventListener?.("click", closeDetail);
+  // Event listeners for overlay close actions
+  wrap.querySelector("#detail-close").addEventListener("click", closeDetail);
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeDetail(); });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
+  window.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDetail(); });
 
-  function renderMonth(){
-    const now = new Date();
-    const base = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
-    const start = startOfCalendar(base);
-    const end = endOfCalendar(base);
-    label.textContent = base.toLocaleDateString(undefined, { year:"numeric", month:"long" });
-
-    cal.innerHTML = "";
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate()+1)) {
-      const iso = ymd(d);
-      const pct = pctFor(iso);
-      const isThisMonth = d.getMonth() === base.getMonth();
-      const isToday = iso === todayISO();
-
-      const cell = h("div", { class: `cell${isThisMonth ? "" : " empty"}${isToday ? " today":""}` });
-      const fill = h("div", { class: "fill", style: `height:${pct}%;` });
-      const date = h("div", { class: "date", text: String(d.getDate()) });
-      const pctEl = h("div", { class: "pct", text: `${pct}%` });
-      cell.append(fill, date, pctEl);
-
-      const journal = state.days[iso]?.journal || "";
-      cell.addEventListener("mouseenter", (e) => showPopover(e.clientX + 12, e.clientY + 12, ymd(d), journal));
-      cell.addEventListener("mouseleave", hidePopover);
-      cell.addEventListener("click", () => openDetail(iso));
-
-      cal.append(cell);
-    }
+  // Helper to compute completion percentage for a given date (as YYYY-MM-DD)
+  function pctFor(iso){
+    const total = state.habits.length || 0;
+    if (!total) return 0;
+    const doneCount = Object.values(state.days[iso]?.habits || {}).filter(Boolean).length;
+    return Math.round((doneCount / total) * 100);
   }
 
-  wrap.append(card("History", controls, dow, cal), popover, overlay);
+  // Initial render
   renderMonth();
   return wrap;
 }
 
-/* ------------------------------ HABITS ---------------------------------- */
+/* ----------------------------- HABITS ----------------------------------- */
 export function renderHabits(state){
   const wrap = h("div", { class: "wrap" });
 
-  const nameIn = h("input", { type: "text", class: "input", placeholder: "New habit name…" });
-  const addBtn = h("button", { class: "btn", onClick: () => {
-    const name = (nameIn.value || "").trim();
+  // Add New Habit form
+  const form = h("form", { class: "row", style: "display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem;" },
+    h("input", {
+      class: "input",
+      type: "text",
+      name: "name",
+      placeholder: "New habit (e.g., Read 10 pages)",
+      required: "required",
+      style: "flex:1;min-width:240px;"
+    }),
+    h("button", { class: "btn", type: "submit" }, "Add Habit")
+  );
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = form.name.value.trim();
     if (!name) return;
     CTRL?.addHabit(name);
-    window.dispatchEvent(new Event("hashchange"));
-  } }, "Add Habit");
+    form.reset();
+  });
 
-  const list = h("div");
-  if (!state.habits.length) {
-    list.append(h("p", { class: "placeholder__text" }, "No habits yet. Add one above."));
-  } else {
-    for (const habit of state.habits) {
-      const row = h("div", { class: "row", style: "margin:.5rem 0;" },
-        h("span", { class: "mono", style: "flex:1;" }, habit.name),
-        h("button", { class: "secondary", onClick: () => {
-          if (confirm(`Delete "${habit.name}"?`)) {
-            CTRL?.deleteHabit(habit.id);
-            window.dispatchEvent(new Event("hashchange"));
-          }
-        } }, "Delete")
-      );
-      list.append(row);
-    }
+  // Habits list
+  const list = h("div", {});
+  for (const habit of state.habits){
+    const btnDelete = h("button", {
+      class: "secondary",
+      type: "button",
+      style: "margin-left:.5rem;",
+      onClick: () => { if (confirm(`Delete '${habit.name}'?`)) CTRL?.deleteHabit(habit.id); }
+    }, "Delete");
+    const item = h("div", { class: "habit-item", style: "display:flex;align-items:center;justify-content:space-between;" },
+      h("span", {}, habit.name),
+      btnDelete
+    );
+    list.append(item);
+  }
+  if (!state.habits.length){
+    list.append(h("div", { class: "placeholder__text" }, "No habits yet. Add a few on the form above."));
   }
 
-  wrap.append(card("Habits", h("div", { class: "field-row" },
-    h("label", { class: "field-label", text: "Add habit" }),
-    h("div", {}, nameIn, h("div", { style: "margin-top:.5rem" }, addBtn))
-  ), list));
+  wrap.append(card("Add Habit", form), card("Your Habits", list));
   return wrap;
 }
 
-/* ------------------------------ JOURNAL --------------------------------- */
+/* ----------------------------- JOURNAL ---------------------------------- */
 export function renderJournal(state){
   const wrap = h("div", { class: "wrap" });
 
-  let offset = 0;
-  function currentISO(){
-    const d = new Date();
-    d.setDate(d.getDate() + offset);
-    return d.toISOString().slice(0,10);
-  }
-  function pretty(date){
-    const d = new Date(date);
-    return d.toLocaleDateString(undefined, { weekday:"short", year:"numeric", month:"short", day:"numeric" });
-  }
-
-  const dateLabel = h("div", { class: "mono", text: pretty(currentISO()) });
-  const ta = h("textarea", { class: "input", value: CTRL?.getJournalForDate(currentISO()) || "" });
-  const counter = h("div", { class: "muted", text: `${ta.value.length} chars` });
-  ta.addEventListener("input", () => {
-    counter.textContent = `${ta.value.length} chars`;
-    clearTimeout(ta._t);
-    ta._t = setTimeout(() => {
-      CTRL?.setJournalForDate(currentISO(), ta.value);
-    }, 250);
+  const form = h("form", { class: "card", style: "margin-bottom:1rem;" },
+    h("h3", { text: "Add Journal Entry" }),
+    h("textarea", { id: "new-journal", required: "required", placeholder: "What's on your mind?", style: "width:100%;min-height:4rem;margin-bottom:.5rem;" }),
+    h("div", { style: "display:flex;justify-content:flex-end;" },
+      h("button", { class: "btn", type: "submit" }, "Add Entry")
+    )
+  );
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = form.querySelector("#new-journal").value.trim();
+    if (!text) return;
+    CTRL?.addJournalEntry(text);
+    form.reset();
   });
 
-  const prevBtn = h("button", { class: "secondary", onClick: () => {
-    offset--; dateLabel.textContent = pretty(currentISO());
-    ta.value = CTRL?.getJournalForDate(currentISO()) || ""; counter.textContent = `${ta.value.length} chars`;
-  } }, "← Prev");
-  const nextBtn = h("button", { class: "secondary", onClick: () => {
-    offset++; dateLabel.textContent = pretty(currentISO());
-    ta.value = CTRL?.getJournalForDate(currentISO()) || ""; counter.textContent = `${ta.value.length} chars`;
-  } }, "Next →");
-  const controls = h("div", { style: "display:flex;gap:.5rem;margin:.5rem 0 1rem 0;" }, prevBtn, nextBtn);
+  const list = h("div", {});
+  for (const entry of state.days[todayISO()]?.journalEntries || []){
+    const item = h("div", { class: "card", style: "margin-bottom:1rem;" },
+      h("div", { class: "entry-text", text: entry.text }),
+      h("div", { class: "muted", style: "text-align:right;font-size:.9rem;", text: new Date(entry.ts).toLocaleString() })
+    );
+    list.append(item);
+  }
+  if (!list.childNodes.length){
+    list.append(h("p", { class: "placeholder__text" }, "No journal entries yet for today."));
+  }
 
-  wrap.append(card("Journal", dateLabel, controls, ta, counter,
-    h("p", { class: "muted", text: "Tip: entries auto-save. Use Prev/Next to browse other days." })
-  ));
+  wrap.append(form, h("h2", { text: "Entries for Today" }), list);
   return wrap;
 }
 
-/* ------------------------------ SETTINGS -------------------------------- */
+/* ---------------------------- SETTINGS ---------------------------------- */
 export function renderSettings(state){
   const wrap = h("div", { class: "wrap" });
 
-  /* Theme */
-  const themeSel = h("select", {
-    class: "input",
-    value: state.user?.theme || "auto",
-    onchange: (e) => CTRL?.updateUser({ theme: e.currentTarget.value })
-  },
-    h("option", { value: "auto", text: "Auto" }),
-    h("option", { value: "dark", text: "Dark" }),
-    h("option", { value: "light", text: "Light" }),
+  // Theme switcher
+  const themeSelect = h("select", { id: "theme-select" },
+    ...["auto","dark","light"].map(opt => h("option", { value: opt, selected: state.user.theme === opt ? "selected" : "" }, opt[0].toUpperCase() + opt.slice(1)))
+  );
+  themeSelect.addEventListener("change", (e) => CTRL?.updateUser({ theme: e.target.value }));
+
+  // Start-of-week switcher
+  const sowSelect = h("select", { id: "sow-select" },
+    ...[0,1].map(val => {
+      const label = val === 0 ? "Sunday" : "Monday";
+      return h("option", { value: String(val), selected: state.user.startOfWeek === val ? "selected" : "" }, label);
+    })
+  );
+  sowSelect.addEventListener("change", (e) => CTRL?.updateUser({ startOfWeek: Number(e.target.value) }));
+
+  // Export / Import
+  const backupKeyInput = h("input", { id: "backup-key", class: "input code", type: "text", readOnly: "readonly", value: encodeURIComponent(encodeSaveKey(buildSnapshot(state))) });
+  const downloadBtn = h("button", { class: "secondary", type: "button", onClick: () => downloadSnapshot(buildSnapshot(state)), style: "margin-top:.5rem;" }, "Export to File");
+  const copyBtn = h("button", { class: "secondary", type: "button", onClick: () => { backupKeyInput.select(); document.execCommand("copy"); backupKeyInput.blur(); alert("Copied backup key to clipboard."); }, style: "margin-top:.5rem;" }, "Copy Backup Key");
+  const loadFileInput = h("input", { id: "load-file", type: "file", accept: ".json", onChange: e => { const file = e.target.files[0]; if (file) readSnapshotFile(file, (snap) => applySnapshotReplaceAll(snap, state)); } });
+  const importFileBtn = h("button", { class: "secondary", type: "button", onClick: () => loadFileInput.click(), style: "margin-top:.5rem;" }, "Import from File");
+  const importKeyBtn = h("button", { class: "secondary", type: "button", onClick: () => {
+    const key = prompt("Paste backup key:");
+    if (key) {
+      const snap = readSnapshotFromKey(decodeURIComponent(key));
+      if (snap) applySnapshotReplaceAll(snap, state);
+      else alert("Invalid backup key.");
+    }
+  }, style: "margin-top:.5rem;" }, "Import from Key");
+
+  wrap.append(
+    h("section", { class: "card" },
+      h("h2", { text: "Settings" }),
+      h("div", { class: "field-row" },
+        h("label", { class: "field-label", for: "theme-select" }, "Theme"),
+        themeSelect
+      ),
+      h("div", { class: "field-row" },
+        h("label", { class: "field-label", for: "sow-select" }, "Start of Week"),
+        sowSelect
+      )
+    ),
+    h("section", { class: "card" },
+      h("h3", { text: "Export Data" }),
+      h("p", {}, "Download a snapshot of all habits and entries."),
+      backupKeyInput,
+      h("div", { style: "display:flex;flex-wrap:wrap;gap:.5rem;" }, downloadBtn, copyBtn)
+    ),
+    h("section", { class: "card" },
+      h("h3", { text: "Import Data" }),
+      h("p", {}, "Import from a snapshot file or backup key."),
+      loadFileInput,
+      h("div", { style: "display:flex;flex-wrap:wrap;gap:.5rem;" }, importFileBtn, importKeyBtn)
+    )
   );
 
-  /* Export / Import */
-  const keyOut = h("textarea", { class: "input code", rows: 3, readOnly: true });
-  const genKeyBtn = h("button", {
-    class: "btn",
-    onClick: () => {
-      keyOut.value = CTRL?.getSaveKey() || "";
-      keyOut.focus(); keyOut.select();
-    }
-  }, "Generate Save Key");
-
-  const fileIn = h("input", { type: "file", accept: ".json,application/json" });
-  const exportBtn = h("button", { class: "btn", onClick: () => CTRL?.exportToFile() }, "Export to File");
-  const importFileBtn = h("button", {
-    class: "btn warn",
-    onClick: async () => {
-      const f = fileIn.files?.[0];
-      if (!f) return alert("Choose a file first.");
-      try { await CTRL?.importFromFile(f); } catch (e) { alert("Import failed."); }
-    }
-  }, "Import from File");
-
-  const keyIn = h("textarea", { class: "input code", rows: 3, placeholder: "Paste save key here..." });
-  const importKeyBtn = h("button", {
-    class: "btn warn",
-    onClick: () => {
-      const k = (keyIn.value || "").trim();
-      if (!k) return alert("Paste a key first.");
-      try { CTRL?.importFromKey(k); } catch (e) { alert("Import failed."); }
-    }
-  }, "Import from Key");
-
-  const themeSec = card("Theme", h("div", { class: "field-row" },
-    h("label", { class: "field-label", text: "Appearance" }),
-    h("div", {}, themeSel, h("div", { class: "muted", text: "Auto follows your system setting." }))
-  ));
-
-  const exportSec = card("Backup", 
-    h("div", { class: "field-row" },
-      h("label", { class: "field-label", text: "Save Key" }),
-      h("div", {}, genKeyBtn, h("div", { style: "margin-top:.5rem" }, keyOut))
-    ),
-    h("div", { class: "field-row" },
-      h("label", { class: "field-label", text: "Export / Import" }),
-      h("div", {}, exportBtn, h("div", { style: "margin-top:.5rem" }, fileIn, importFileBtn))
-    ),
-    h("div", { class: "field-row" },
-      h("label", { class: "field-label", text: "Import from Key" }),
-      h("div", {}, keyIn, h("div", { style: "margin-top:.5rem" }, importKeyBtn))
-    ),
-  );
-
-  const about = card("About", h("div", { class: "muted", html: `Version <strong id="app-version">v0.6.0</strong>. Your data stays on your device.` }));
-  wrap.append(themeSec, exportSec, about);
   return wrap;
 }
