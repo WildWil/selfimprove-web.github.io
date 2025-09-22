@@ -9,3 +9,13 @@ export async function loadQuotes() {
     return []; // fail safe
   }
 }
+
+// Session cache to avoid refetch + flicker
+let QUOTES_CACHE = null;
+
+export async function loadQuotesCached() {
+  if (QUOTES_CACHE) return QUOTES_CACHE;
+  const list = await loadQuotes();
+  QUOTES_CACHE = Array.isArray(list) ? list : [];
+  return QUOTES_CACHE;
+}
