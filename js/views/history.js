@@ -1,64 +1,111 @@
-import { h, mount } from "../ui.js";
-import { loadState } from "../storage.js";
-import {
-  monthLabel, startOfCalendar, endOfCalendar,
-  addDays, isoDate as ymd
-} from "../calendar.js";
+import { ymd, startOfCalendar, endOfCalendar } from "../calendar.js";
+import { h, card, chip, showPopover, hidePopover, openDetail, closeDetail } from "../ui-helpers.js";
 
-export function renderHistory(root) {
-  // month anchor in state? else today
-  const state = loadState();
-  const anchor = state.historyAnchor ? new Date(state.historyAnchor) : new Date();
+export function renderHistory(state){
+  const wrap = h("div", { class: "wrap" });
 
-  function render(monthDate) {
-    const head = h("div", { class: "row" },
-      h("button", { class: "btn", onClick: () => navigate(-1) }, "← Prev Month"),
-      h("h1", { class: "page-title", style: "margin: 0 auto;" }, `History — Calendar`),
-      h("button", { class: "btn", onClick: () => navigate(1) }, "Next Month →")
+  const pctFor = (iso) => {
+    const total = state.habits.length;
+    const d = state.days[iso] || { habits:{} };
+    const done = Object.values(d.habits || {}).filter(Boolean).length;
+    return total ? Math.round((done/total)*100) : 0;
+  };
+
+  let monthOffset = 0;
+
+  const label = h("div", { class: "mono", style: "text-align:center;flex:1;" });
+  const prevBtn = h("button", { class: "secondary", type: "button", onClick: () => { monthOffset--; renderMonth(); } }, "← Prev Month");
+  const nextBtn = h("button", { class: "secondary", type: "button", onClick: () => { monthOffset++; renderMonth(); } }, "Next Month →");
+
+  wrap.append(
+    h("div", { class: "row", style: "justify-content:space-between;align-items:center;" },
+      prevBtn, h("h1", { text: "History — Calendar" }), nextBtn
+    ),
+    label
+  );
+
+  function renderMonth(){
+    const today = new Date();
+    const anchor = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+    const start = startOfCalendar(anchor);
+    const end   = endOfCalendar(anchor);
+
+    label.textContent = anchor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+
+    const grid = h("div", { class: "cal" },
+      h("div", { class: "cal__head" },
+        ...["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d => h("div", { class: "cal__head__cell" }, d))
+      )
     );
 
-    const label = h("h2", { class: "muted", style: "text-align:center;margin-top:12px;" }, monthLabel(monthDate));
+    const row = h("div", { class: "cal__row" });
+    let day = new Date(start);
 
-    const grid = h("div", { class: "calendar-grid" });
-    // Weekday headers (Sun..Sat)
-    const weekNames = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-    const header = h("div", { class: "calendar-row header" },
-      ...weekNames.map(n => h("div", { class: "cell head" }, n))
-    );
+    while (day <= end) {
+      const iso = ymd(day);
+      const inMonth = day.getMonth() === anchor.getMonth();
+      const num = day.getDate();
 
-    const start = startOfCalendar(monthDate);
-    const end = endOfCalendar(monthDate);
-    const cells = [];
-    for (let d = new Date(start); d <= end; d = addDays(d, 1)) {
-      const dayIso = ymd(d);
-      const inMonth = d.getMonth() === monthDate.getMonth();
-      const dayNum = d.getDate();
-      const cell = h("div", { class: `cell day ${inMonth ? "" : "dim"}` },
-        h("div", { class: "day-number" }, String(dayNum))
+      const pct = pctFor(iso);
+
+      const cell = h("button", {
+        class: `cal__cell ${inMonth ? "" : "cal__cell--dim"}`,
+        type: "button",
+        onClick: () => openDetail(detailFor(iso)),
+        onMouseenter: (e) => {
+          const pop = h("div", {},
+            h("strong", {}, iso),
+            h("div", { class: "muted" }, `${pct}% complete`)
+          );
+          const p = showPopover(e.currentTarget, pop);
+          cell._pop = p;
+        },
+        onMouseleave: () => { hidePopover(cell._pop); cell._pop = null; }
+      },
+        h("div", { class: "cal__num" }, String(num)),
+        h("div", { class: "cal__bar" }, h("span", { style: `width:${pct}%;` }))
       );
-      // future: show small dots for completed habits on that day
-      cells.push(cell);
+
+      row.append(cell);
+
+      if (day.getDay() === 6) {  // Sat → new row
+        grid.append(row.cloneNode(false));
+        while (row.firstChild) grid.lastChild.append(row.firstChild);
+      }
+
+      day.setDate(day.getDate() + 1);
     }
 
-    grid.appendChild(header);
-    // render rows of 7
-    for (let i=0;i<cells.length;i+=7) {
-      grid.appendChild(h("div", { class: "calendar-row" }, ...cells.slice(i, i+7)));
-    }
+    // trailing row if needed
+    if (row.childNodes.length) grid.append(row);
 
-    const page = h("div", { class: "page" }, head, label, grid);
-    mount(root, page);
+    // replace grid in wrap
+    const old = wrap.querySelector(".cal");
+    if (old) old.replaceWith(grid);
+    else wrap.append(card(null, grid));
   }
 
-  function navigate(deltaMonths) {
-    const d = new Date(anchor);
-    d.setMonth(d.getMonth() + deltaMonths);
-    const s = loadState();
-    s.historyAnchor = d.toISOString();
-    // we don’t save to disk here to avoid extra writes; harmless if you prefer
-    localStorage.setItem("selftrack_state_v1", JSON.stringify(s));
-    render(d);
+  function detailFor(iso){
+    const day = state.days[iso] || { habits:{} };
+    const items = Object.values(state.habits).map(hb => {
+      const ok = !!day.habits[hb.id];
+      return h("div", { class: "row", style:"align-items:center;gap:.75rem;" },
+        h("span", { class: "dot", style: `--c:${hb.color || "#6c8ef5"}` }),
+        h("span", { class: ok ? "title" : "muted" }, hb.name),
+        h("span", { class: "spacer" }),
+        ok ? chip("✓", "ok") : chip("–", "muted")
+      );
+    });
+
+    return h("div", {},
+      h("div", { class: "row", style:"justify-content:space-between;align-items:center;" },
+        h("h3", { text: iso }),
+        h("button", { class: "secondary", type:"button", onClick: closeDetail }, "Close ✕")
+      ),
+      ...items
+    );
   }
 
-  render(anchor);
+  renderMonth();
+  return wrap;
 }
