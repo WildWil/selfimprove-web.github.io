@@ -1,26 +1,22 @@
-import { h, mount } from "../ui.js";
-import { loadState, saveState } from "../storage.js";
-import { isoDate } from "../calendar.js";
+import { h, card, loadDay, CTRL } from "../ui-helpers.js";
+import { ymd } from "../calendar.js";
 
-export function renderJournal(root) {
-  const todayIso = isoDate(new Date());
-  const state = loadState();
-  const current = state.days[todayIso] || { habits: {}, journal: "" };
+export function renderJournal(state){
+  const wrap = h("div", { class: "wrap" });
 
-  const title = h("h1", { class: "page-title" }, "Journal");
+  const iso = ymd(new Date());
+  const day = loadDay(state, iso);
 
   const area = h("textarea", {
-    class: "journal big",
+    class: "input",
     placeholder: "Write your thoughts…",
-    oninput: (e) => {
-      const s = loadState();
-      const day = s.days[todayIso] || { habits: {}, journal: "" };
-      day.journal = e.target.value;
-      s.days[todayIso] = day;
-      saveState(s);
+    rows: 8,
+    value: day.journal || "",
+    onInput: (e) => {
+      CTRL?.setJournalForDate?.(iso, e.target.value);
     }
-  }, current.journal || "");
-  area.value = current.journal || "";
+  });
 
-  mount(root, h("div", { class: "page" }, title, h("div", { class: "card" }, area)));
+  wrap.append(card("Journal", area));
+  return wrap;
 }
