@@ -1,4 +1,4 @@
-# SelfTrack — Static Self-Improvement Dashboard
+# SelfTrack
 
 **Version:** v0.1 (MVP scaffold)  
 **Live Demo:** [https://selfimprove-web.github.io/](https://selfimprove-web.github.io/)
