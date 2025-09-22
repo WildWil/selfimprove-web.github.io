@@ -32,4 +32,32 @@ export function getWeekStartIndex() {
 }
 
 export function startOfCalendar(monthDate) {
-  const star
+  const start = startOfMonth(monthDate);
+  const dow = start.getDay(); // 0=Sun..6=Sat
+  const weekStart = getWeekStartIndex(); // 0
+  const diff = (dow - weekStart + 7) % 7;
+  return addDays(start, -diff);
+}
+
+export function endOfCalendar(monthDate) {
+  const end = endOfMonth(monthDate);
+  const weekStart = getWeekStartIndex(); // 0
+  const weekEnd = (weekStart + 6) % 7;   // 6 = Saturday
+  const dow = end.getDay();
+  const diff = (weekEnd - dow + 7) % 7;
+  return addDays(end, diff);
+}
+
+export function startOfMonth(d) {
+  const x = new Date(d);
+  x.setDate(1);
+  x.setHours(0,0,0,0);
+  return x;
+}
+
+export function endOfMonth(d) {
+  const x = new Date(d);
+  x.setMonth(x.getMonth() + 1, 0); // last day of month
+  x.setHours(23,59,59,999);
+  return x;
+}
